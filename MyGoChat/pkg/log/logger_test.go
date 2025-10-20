@@ -3,6 +3,8 @@ package log
 import (
 	"net/http"
 	"testing"
+
+	"go.uber.org/zap"
 )
 
 func simpleHttpGet(url string) {
@@ -19,7 +21,12 @@ func simpleHttpGet(url string) {
 func TestInitLogger(t *testing.T) {
 
 	InitLogger("./log/test.log", "debug")
-	defer Logger.Sync()
+	defer func(Logger *zap.Logger) {
+		err := Logger.Sync()
+		if err != nil {
+
+		}
+	}(Logger)
 	simpleHttpGet("http://www.example.com")
 
 }
