@@ -13,7 +13,7 @@ func TestDBConnection(t *testing.T) {
 		t.Fatalf("Failed to get DB from gorm.DB: %v", err)
 	}
 
-	err = sqlDB.Ping()
+	err = sqlDB.Ping() // Ping
 	if err != nil {
 		t.Fatalf("Failed to ping DB: %v", err)
 	}

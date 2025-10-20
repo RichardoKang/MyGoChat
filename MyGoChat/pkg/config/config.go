@@ -10,6 +10,7 @@ type (
 	YamlConfig struct {
 		AppName     string
 		PostgresSQL PostgresSQLConfig
+		Log         LogConfig
 	}
 
 	PostgresSQLConfig struct {
@@ -21,6 +22,10 @@ type (
 		SSLMode  string
 		TimeZone string
 	}
+	LogConfig struct {
+		Path  string
+		Level string
+	}
 )
 
 var config YamlConfig
@@ -28,7 +33,7 @@ var config YamlConfig
 func init() {
 	viper.SetConfigName("config.dev")
 	viper.SetConfigType("yaml")
-	viper.AddConfigPath("../../configs")
+	viper.AddConfigPath("./configs")
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
