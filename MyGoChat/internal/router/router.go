@@ -2,6 +2,8 @@ package router
 
 import (
 	"MyGoChat/api/v1"
+	"MyGoChat/internal/middleware"
+	"MyGoChat/pkg/common/response"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -21,12 +23,18 @@ func NewRouter() *gin.Engine {
 
 	userRoutes := groups.Group("/user")
 	{
-		//userRoutes.GET("/user", v1.GetUserList)
-		//userRoutes.GET("/user/:uuid", v1.GetUserDetails)
-		//userRoutes.GET("/user/name", v1.GetUserOrGroupByName)
 		userRoutes.POST("/register", v1.Register)
-		//userRoutes.POST("/user/login", v1.Login)
-		//userRoutes.PUT("/user", v1.ModifyUserInfo)
+		userRoutes.POST("/login", v1.Login)
+	}
+
+	// Protected routes
+	protectedRoutes := groups.Group("/")
+	protectedRoutes.Use(middleware.JWTAuthMiddleware())
+	{
+		protectedRoutes.GET("/protected", func(c *gin.Context) {
+			username := c.MustGet("username").(string)
+			c.JSON(http.StatusOK, response.SuccessMsg(gin.H{"message": "Welcome to the protected area, " + username}))
+		})
 	}
 
 	return routers

@@ -11,6 +11,7 @@ type (
 		AppName     string
 		PostgresSQL PostgresSQLConfig
 		Log         LogConfig
+		JwtSecret   JwtSecretConfig
 	}
 
 	PostgresSQLConfig struct {
@@ -25,6 +26,9 @@ type (
 	LogConfig struct {
 		Path  string
 		Level string
+	}
+	JwtSecretConfig struct {
+		SecretKey string
 	}
 )
 
