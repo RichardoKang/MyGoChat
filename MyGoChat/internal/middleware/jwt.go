@@ -1,0 +1,41 @@
+package middleware
+
+import (
+	"MyGoChat/pkg/common/response"
+	"MyGoChat/pkg/token"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+)
+
+// JWTAuthMiddleware 用来验证JWT令牌的中间件，确保请求携带有效的令牌。
+func JWTAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		tokenString := c.GetHeader("Authorization")
+		if tokenString == "" {
+			c.JSON(http.StatusUnauthorized, response.FailMsg("Authorization header required"))
+			c.Abort()
+			return
+		}
+
+		// 检查携带的token格式是否正确
+		if len(tokenString) > 7 && tokenString[:7] == "Bearer " {
+			tokenString = tokenString[7:]
+		} else {
+			c.JSON(http.StatusUnauthorized, response.FailMsg("Invalid token format"))
+			c.Abort()
+			return
+		}
+
+		claims, err := token.ParseToken(tokenString)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, response.FailMsg("Invalid token"))
+			c.Abort()
+			return
+		}
+
+		c.Set("user_uuid", claims.UserUuid)
+		c.Set("username", claims.Username)
+		c.Next()
+	}
+}
