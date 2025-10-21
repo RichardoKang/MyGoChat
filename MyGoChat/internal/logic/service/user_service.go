@@ -85,8 +85,14 @@ func (u *userService) Login(user *model.User) (string, error) {
 	return tokenString, nil
 }
 
-func (u *userService) UpdateUserInfo(user *model.User) error {
-	if user == nil || user.Uuid == "" {
+func (u *userService) Update(user *model.User, tokenString string) error {
+	userUuid, err := token.GetUserUuidFromToken(tokenString)
+	if err != nil {
+		return err
+	}
+	user.Uuid = userUuid
+
+	if user.Uuid == "" {
 		return errors.New("invalid user data")
 	}
 

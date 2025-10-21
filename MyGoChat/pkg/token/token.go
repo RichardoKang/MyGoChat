@@ -65,3 +65,11 @@ func ParseToken(tokenString string) (*Claims, error) {
 
 	return nil, errors.New("invalid token")
 }
+
+func GetUserUuidFromToken(tokenString string) (string, error) {
+	claims, err := ParseToken(tokenString)
+	if err != nil {
+		return "", err
+	}
+	return claims.UserUuid, nil
+}
