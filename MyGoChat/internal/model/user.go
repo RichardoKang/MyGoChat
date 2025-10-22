@@ -5,7 +5,7 @@ import (
 )
 
 type User struct {
-	Id       int32     `json:"id" gorm:"primary_key;AUTO_INCREMENT;comment:'id'"`
+	ID       int32     `json:"id" gorm:"primary_key;AUTO_INCREMENT;comment:'id'"`
 	Uuid     string    `json:"uuid" gorm:"type:varchar(150);not null;unique_index:idx_uuid;comment:'uuid'"`
 	Username string    `json:"username" form:"username" binding:"required" gorm:"unique;not null; comment:'用户名'"`
 	Password string    `json:"-" form:"password" binding:"required" gorm:"type:varchar(150);not null; comment:'密码'"`

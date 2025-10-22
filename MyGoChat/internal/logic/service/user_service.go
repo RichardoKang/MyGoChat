@@ -67,9 +67,16 @@ func (u *userService) Register(user *model.User) (string, error) {
 func (u *userService) Login(user *model.User) (string, error) {
 	d := db.GetDB()
 	var dbUser model.User
-	if res := d.Where("username = ?", user.Username).First(&dbUser); res.Error != nil {
+	if res := d.Select("*").Where("username = ?", user.Username).First(&dbUser); res.Error != nil {
 		return "", errors.New("invalid username or password")
 	}
+
+	// Explicitly fetch the password as it might be ignored due to json:"-" tag
+	var password string
+	if res := d.Model(&model.User{}).Select("password").Where("username = ?", user.Username).Scan(&password); res.Error != nil {
+		return "", errors.New("invalid username or password") // Or a more specific error if needed
+	}
+	dbUser.Password = password // Assign the fetched password
 
 	if res := util.ComparePassword(dbUser.Password, user.Password); res != true {
 		return "", errors.New("invalid password")
