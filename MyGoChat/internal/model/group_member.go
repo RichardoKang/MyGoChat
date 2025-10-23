@@ -16,5 +16,5 @@ type GroupMember struct {
 	GroupId   int32                 `json:"groupId" gorm:"index;comment:'群组ID'"`
 	Group     Group                 `gorm:"foreignKey:GroupId"`
 	Nickname  string                `json:"nickname" gorm:"type:varchar(350);comment:'昵称"`
-	Mute      int16                 `json:"mute" gorm:"comment:'是否禁言'"`
+	Mute      bool                  `json:"mute" gorm:"comment:'是否禁言'"`
 }
