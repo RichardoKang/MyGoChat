@@ -91,11 +91,7 @@ func (u *userService) Login(user *model.User) (string, error) {
 	return tokenString, nil
 }
 
-func (u *userService) Update(user *model.User, tokenString string) error {
-	userUuid, err := token.GetUserUuidFromToken(tokenString)
-	if err != nil {
-		return err
-	}
+func (u *userService) Update(user *model.User, userUuid string) error {
 	user.Uuid = userUuid
 
 	if user.Uuid == "" {

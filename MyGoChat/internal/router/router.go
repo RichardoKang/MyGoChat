@@ -37,6 +37,7 @@ func NewRouter() *gin.Engine {
 		{
 			group.Use(middleware.JWTAuthMiddleware())
 			group.POST("/create", v1.CreateGroup)
+			group.GET("/mine", v1.GetMyGroups)
 		}
 
 	}

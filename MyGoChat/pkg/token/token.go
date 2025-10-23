@@ -10,7 +10,7 @@ import (
 )
 
 type Claims struct {
-	UserUuid string `json:"user_uuid"`
+	UserUuid string `json:"useruuid"`
 	Username string `json:"username"`
 	jwt.RegisteredClaims
 }

@@ -6,7 +6,6 @@ import (
 	"MyGoChat/pkg/common/request"
 	"MyGoChat/pkg/common/response"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -75,10 +74,14 @@ func Update(c *gin.Context) {
 		return
 	}
 	// 传入token，解析在service层
-	authHeader := c.GetHeader("Authorization")
-	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	value, exist := c.Get("useruuid")
+	if !exist {
+		c.JSON(http.StatusUnauthorized, response.FailMsg("Unauthorized"))
+		return
+	}
+	userUuid := value.(string)
 
-	err := service.UserService.Update(&user, tokenString)
+	err := service.UserService.Update(&user, userUuid)
 	if err != nil {
 		c.JSON(http.StatusOK, response.FailMsg(err.Error()))
 		return

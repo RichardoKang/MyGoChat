@@ -23,7 +23,7 @@ func CreateGroup(c *gin.Context) {
 		return
 	}
 
-	value, exist := c.Get("user_uuid")
+	value, exist := c.Get("useruuid")
 	if !exist {
 		c.JSON(http.StatusUnauthorized, response.FailMsg("Unauthorized"))
 		return
@@ -40,4 +40,20 @@ func CreateGroup(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, response.SuccessMsg(group))
+}
+
+func GetMyGroups(c *gin.Context) {
+	value, exist := c.Get("useruuid")
+	if !exist {
+		c.JSON(http.StatusUnauthorized, response.FailMsg("Unauthorized"))
+		return
+	}
+	userUuid := value.(string)
+
+	groups, err := service.GroupService.GetMyGroups(userUuid)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, response.FailMsg(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, response.SuccessMsg(groups))
 }
