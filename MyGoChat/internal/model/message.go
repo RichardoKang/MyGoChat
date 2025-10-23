@@ -7,13 +7,13 @@ import (
 )
 
 type Message struct {
-	ID          int32                 `json:"id" gorm:"primarykey"`
+	ID          uint                  `json:"id" gorm:"primarykey"`
 	CreatedAt   time.Time             `json:"createAt"`
 	UpdatedAt   time.Time             `json:"updatedAt"`
 	DeletedAt   soft_delete.DeletedAt `json:"deletedAt"`
-	FromUserId  int32                 `json:"fromUserId" gorm:"index"`
+	FromUserId  uint                  `json:"fromUserId" gorm:"index"`
 	FromUser    User                  `gorm:"foreignKey:FromUserId;references:Id"`
-	ToUserId    int32                 `json:"toUserId" gorm:"index;comment:'发送给端的id，可为用户id或者群id'"`
+	ToUserId    uint                  `json:"toUserId" gorm:"index;comment:'发送给端的id，可为用户id或者群id'"`
 	Content     string                `json:"content" gorm:"type:varchar(2500)"`
 	MessageType int16                 `json:"messageType" gorm:"comment:'消息类型：1单聊，2群聊'"`
 	ContentType int16                 `json:"contentType" gorm:"comment:'消息内容类型：1文字 2.普通文件 3.图片 4.音频 5.视频 6.语音聊天 7.视频聊天'"`

@@ -44,7 +44,6 @@ func (u *userService) Register(user *model.User) (string, error) {
 	user.Password = hashedPassword
 	user.Uuid = uuid.New().String()
 	user.CreateAt = time.Now()
-	user.DeleteAt = 0
 
 	if res := d.Create(user); res.Error != nil {
 		logger.Sugar().Errorf("user_service: Create user error: %v", res.Error)

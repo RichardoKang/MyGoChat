@@ -32,6 +32,12 @@ func NewRouter() *gin.Engine {
 				info.PUT("/update", v1.Update)
 			}
 		}
+		// hostname/api/group
+		group := api.Group("/group")
+		{
+			group.Use(middleware.JWTAuthMiddleware())
+			group.POST("/create", v1.CreateGroup)
+		}
 
 	}
 

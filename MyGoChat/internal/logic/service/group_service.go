@@ -4,6 +4,7 @@ import (
 	"MyGoChat/internal/model"
 	"MyGoChat/pkg/db"
 	"MyGoChat/pkg/log"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -17,6 +18,12 @@ func (g *groupService) CreateGroup(group *model.Group, adminUserUuid string) err
 	logger := log.Logger
 	d := db.GetDB()
 
+	// 确保表存在
+	if err := d.AutoMigrate(&model.Group{}, &model.GroupMember{}); err != nil {
+		logger.Error("CreateGroup: failed to migrate tables")
+		return err
+	}
+
 	var adminUser model.User
 	result := d.Find(&adminUser, "uuid = ?", adminUserUuid)
 	if result.Error != nil {
@@ -24,13 +31,14 @@ func (g *groupService) CreateGroup(group *model.Group, adminUserUuid string) err
 		return result.Error
 	}
 
-	group.AdminUserUuid = adminUserUuid
 	group.Uuid = uuid.New().String()
+	group.AdminUserID = adminUser.ID
+	group.CreatedAt = time.Now()
 	d.Save(&group)
 
 	groupMember := model.GroupMember{
-		UserId:   adminUser.ID,
-		GroupId:  group.ID,
+		UserID:   adminUser.ID,
+		GroupID:  group.ID,
 		Nickname: adminUser.Nickname,
 		Mute:     false,
 	}

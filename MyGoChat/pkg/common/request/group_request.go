@@ -1,9 +1,6 @@
 package request
 
-import "github.com/golang-jwt/jwt/v5"
-
+// CreateGroupRequest 创建群组请求
 type CreateGroupRequest struct {
-	GroupName string   `json:"groupName"`
-	Members   []string `json:"members"`
-	jwt.Token
+	GroupName string `json:"groupname" binding:"required,min=3,max=20"`
 }
