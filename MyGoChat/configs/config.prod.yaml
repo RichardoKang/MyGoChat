@@ -1,0 +1,17 @@
+AppName: "MyGoChat"
+
+PostgresSQL:
+  user: "your_username"
+  password: "your_password"
+  host: "127.0.0.1"
+  port: 5432
+  dbname: "your_database"
+  sslmode: "disable/enable"
+  timezone: "Asia/Shanghai"
+
+Log:
+  level: "info"
+  path: "./pkg/log/log"
+
+JwtSecret:
+  SecretKey: "your_secret_key"
