@@ -78,3 +78,18 @@ func JoinGroup(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, response.SuccessMsg("Joined group successfully"))
 }
+
+func GetGroupMembers(c *gin.Context) {
+	var req request.GetGroupMembersRequest
+	if err := c.ShouldBindUri(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.FailMsg(err.Error()))
+		return
+	}
+
+	members, err := service.GroupService.GetGroupMembers(req.GroupNumber)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, response.FailMsg(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, response.SuccessMsg(members))
+}

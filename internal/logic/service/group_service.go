@@ -161,7 +161,7 @@ func (g *groupService) GetGroupMembers(GroupNumber string) ([]response.GroupMemb
 
 	var members []response.GroupMemberResponse
 	result = d.Table("group_members").
-		Select("users.uuid, users.username, users.avatar, group_members.nickname, group_members.mute").
+		Select("users.uuid, users.username, group_members.nickname, group_members.mute").
 		Joins("join users on group_members.user_id = users.id").
 		Where("group_members.group_id = ?", group.ID).
 		Scan(&members)

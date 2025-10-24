@@ -10,3 +10,8 @@ type JoinGroupRequest struct {
 	GroupNumber string `json:"groupnumber" binding:"required,len=6"`
 	Nickname    string `json:"nickname" binding:"required,min=3,max=20"`
 }
+
+// GetGroupMembersRequest 获取群组成员请求
+type GetGroupMembersRequest struct {
+	GroupNumber string `uri:"groupnumber" binding:"required,len=6"`
+}

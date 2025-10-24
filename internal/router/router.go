@@ -39,6 +39,7 @@ func NewRouter() *gin.Engine {
 			group.POST("/create", v1.CreateGroup)
 			group.GET("/mine", v1.GetMyGroups)
 			group.POST("/join", v1.JoinGroup)
+			group.GET("/:groupnumber/members", v1.GetGroupMembers)
 		}
 
 	}
