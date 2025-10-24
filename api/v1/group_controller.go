@@ -57,3 +57,24 @@ func GetMyGroups(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, response.SuccessMsg(groups))
 }
+
+func JoinGroup(c *gin.Context) {
+	var req request.JoinGroupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.FailMsg(err.Error()))
+		return
+	}
+
+	value, exist := c.Get("useruuid")
+	if !exist {
+		c.JSON(http.StatusUnauthorized, response.FailMsg("Unauthorized"))
+		return
+	}
+	userUuid := value.(string)
+
+	if err := service.GroupService.JoinGroup(userUuid, req.GroupNumber, req.Nickname); err != nil {
+		c.JSON(http.StatusInternalServerError, response.FailMsg(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, response.SuccessMsg("Joined group successfully"))
+}

@@ -68,11 +68,18 @@ func Login(c *gin.Context) {
 }
 
 func Update(c *gin.Context) {
-	var user model.User
-	if err := c.ShouldBindJSON(&user); err != nil {
-		c.JSON(400, gin.H{"error": "参数错误"})
+	var req request.UserUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, response.FailMsg(err.Error()))
 		return
 	}
+
+	user := model.User{
+		Nickname: req.Nickname,
+		Email:    req.Email,
+		Avatar:   req.Avatar,
+	}
+
 	// 传入token，解析在service层
 	value, exist := c.Get("useruuid")
 	if !exist {
