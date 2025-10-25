@@ -124,3 +124,12 @@ func (u *userService) Update(user *model.User, userUuid string) error {
 	}
 	return nil
 }
+
+func (u *userService) GetUserByUuid(uuid string) (*model.User, error) {
+	d := db.GetDB()
+	var user model.User
+	if res := d.Where("uuid = ?", uuid).First(&user); res.Error != nil {
+		return nil, res.Error
+	}
+	return &user, nil
+}
