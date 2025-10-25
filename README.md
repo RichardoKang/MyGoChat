@@ -16,10 +16,13 @@
   - 数据库迁移与模型定义
   - CRUD操作
 - 数据库：PostgreSQL
-- 消息队列：Kafka(计划引入)
-- 实时通信：WebSocket(计划引入)
-- 缓存：Redis(计划引入)
-- 容器化：Docker(计划引入)
+- 实时通信：WebSocket
+    - 消息推送与接收
+    - 连接管理
+    - 心跳检测(TODO)
+- 消息队列：Kafka(TODO)
+- 缓存：Redis(TODO)
+- 容器化：Docker(TODO)
 
 ## 安装与运行(目前)
 1. 克隆仓库
