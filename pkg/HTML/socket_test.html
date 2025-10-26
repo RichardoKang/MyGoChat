@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>WebSocket Auth Test</title>
+    <title>WebSocket Test</title>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
         .container { border: 1px solid #ccc; padding: 20px; margin-top: 20px; border-radius: 8px; width: 600px; }
@@ -13,14 +13,14 @@
 </head>
 <body>
 
-    <h1>WebSocket Auth Test</h1>
+    <h1>WebSocket Test</h1>
 
     <div class="container">
         <h2>1. Login</h2>
         <p>Username: <input type="text" id="username" value="hawa130"></p>
         <p>Password: <input type="password" id="password" value="114514"></p>
         <button onclick="login()">Login</button>
-        <p><b>JWT Token:</b> <span id="token"></span></p>
+        <p><b>JWT Token:</b> <span id="token" style="display:inline-block; max-width:420px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:middle;"></span></p>
     </div>
 
     <div class="container">

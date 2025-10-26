@@ -133,3 +133,12 @@ func (u *userService) GetUserByUuid(uuid string) (*model.User, error) {
 	}
 	return &user, nil
 }
+
+func (u *userService) GetUserByID(id uint) (*model.User, error) {
+	d := db.GetDB()
+	var user model.User
+	if res := d.First(&user, id); res.Error != nil {
+		return nil, res.Error
+	}
+	return &user, nil
+}
