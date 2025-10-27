@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"MyGoChat/internal/logic/service"
 	"MyGoChat/internal/model"
 	"MyGoChat/pkg/log"
 	"encoding/json"
@@ -57,14 +56,6 @@ func (h *Hub) Run() {
 			}
 			h.mu.Unlock()
 		case message := <-h.broadcast:
-			// Get sender's information
-			sender, err := service.UserService.GetUserByID(message.SenderId)
-			if err != nil {
-				log.Logger.Sugar().Errorf("Error getting sender info: %v", err)
-				continue
-			}
-			message.Sender = *sender
-
 			h.mu.RLock()
 			recipientClient, ok := h.clients[message.RecipientId]
 			h.mu.RUnlock()

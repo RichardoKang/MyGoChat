@@ -14,6 +14,7 @@ type (
 		PostgresSQL PostgresSQLConfig
 		Log         LogConfig
 		JwtSecret   JwtSecretConfig
+		Kafka       KafkaConfig
 	}
 
 	PostgresSQLConfig struct {
@@ -31,6 +32,10 @@ type (
 	}
 	JwtSecretConfig struct {
 		SecretKey string
+	}
+
+	KafkaConfig struct {
+		Brokers []string
 	}
 )
 
