@@ -1,7 +1,7 @@
 package main
 
 import (
-	"MyGoChat/internal/gateway"
+	"MyGoChat/internal/gateway/socket"
 	"MyGoChat/internal/logic/server"
 	"MyGoChat/pkg/config"
 	_ "MyGoChat/pkg/db" // 导入db包以触发init函数
@@ -16,7 +16,7 @@ func main() {
 	log.Logger.Info("start server", log.String("start", "start web sever..."))
 
 	// Create and run the WebSocket hub
-	hub := gateway.NewHub()
+	hub := socket.NewHub()
 	go hub.Run()
 
 	// Pass the hub to the router

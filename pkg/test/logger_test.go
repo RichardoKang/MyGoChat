@@ -1,6 +1,7 @@
-package log
+package test
 
 import (
+	"MyGoChat/pkg/log"
 	"net/http"
 	"testing"
 
@@ -8,25 +9,25 @@ import (
 )
 
 func simpleHttpGet(url string) {
-	Logger.Sugar().Debug("Trying to hit GET request", url)
+	log.Logger.Sugar().Debug("Trying to hit GET request", url)
 	resp, err := http.Get(url)
 	if err != nil {
-		Logger.Sugar().Errorf("Error fetching URL url=%s: %v", url, err)
+		log.Logger.Sugar().Errorf("Error fetching URL url=%s: %v", url, err)
 	} else {
-		Logger.Sugar().Infof("Success! statusCode=%s url=%s", resp.Status, url)
+		log.Logger.Sugar().Infof("Success! statusCode=%s url=%s", resp.Status, url)
 		resp.Body.Close()
 	}
 }
 
 func TestInitLogger(t *testing.T) {
 
-	InitLogger("./log/test.log", "debug")
+	log.InitLogger("./log/test.log", "debug")
 	defer func(Logger *zap.Logger) {
 		err := Logger.Sync()
 		if err != nil {
 
 		}
-	}(Logger)
+	}(log.Logger)
 	simpleHttpGet("http://www.example.com")
 
 }

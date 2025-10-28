@@ -7,7 +7,7 @@ import (
 )
 
 type Message struct {
-	ID          uint                  `json:"id" gorm:"primarykey"`
+	Uuid        string                `json:"uuid" gorm:"primarykey"`
 	CreatedAt   time.Time             `json:"createAt"`
 	UpdatedAt   time.Time             `json:"updatedAt"`
 	DeletedAt   soft_delete.DeletedAt `json:"deletedAt"`

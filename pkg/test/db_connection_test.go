@@ -1,13 +1,14 @@
-package db
+package test
 
 import (
+	db2 "MyGoChat/pkg/db"
 	"testing"
 
 	_ "github.com/lib/pq"
 )
 
 func TestDBConnection(t *testing.T) {
-	db := GetDB()
+	db := db2.GetDB()
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatalf("Failed to get DB from gorm.DB: %v", err)

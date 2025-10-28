@@ -1,4 +1,4 @@
-package kafka
+package test
 
 import (
 	"MyGoChat/pkg/config"
@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	myKafka "MyGoChat/pkg/kafka"
 
 	"github.com/segmentio/kafka-go"
 	"github.com/stretchr/testify/assert"
@@ -80,26 +82,27 @@ func createKafkaTopics(topics ...string) error {
 
 // TestInitProducer 测试初始化Kafka生产者
 func TestInitProducer(t *testing.T) {
-	InitProducer()
+	writer := myKafka.InitProducer()
 	if writer == nil {
-		t.Error("Expected writer to be initialized, got nil")
+		t.Error("Expected non-nil Kafka writer after initialization")
 	}
-	CloseProducer()
+
+	myKafka.CloseProducer()
 }
 
 // TestSendMessage 测试发送消息功能
 func TestSendMessage(t *testing.T) {
-	InitProducer()
-	err := SendMessage("test-topic", []byte("Hello, Kafka!"))
+	myKafka.InitProducer()
+	err := myKafka.SendMessage("test-topic", []byte("Hello, Kafka!"))
 	if err != nil {
 		t.Errorf("Expected no error sending message, got %v", err)
 	}
-	CloseProducer()
+	myKafka.CloseProducer()
 }
 
 func TestCloseProducer(t *testing.T) {
-	InitProducer()
-	CloseProducer()
+	myKafka.InitProducer()
+	myKafka.CloseProducer()
 	// 这项测试有点棘手，因为writer是一个包级变量。
 	// 如果writer对象有一个公共状态方法，检查状态会是一个更好的方法。
 	// 目前，我们假设如果没有panic，CloseProducer()就能工作。
@@ -108,8 +111,8 @@ func TestCloseProducer(t *testing.T) {
 // TestKafkaMessageRoundTrip 测试从发送到接收消息的完整流程
 func TestKafkaMessageRoundTrip(t *testing.T) {
 	// 1. 初始化
-	InitProducer()
-	defer CloseProducer()
+	myKafka.InitProducer()
+	defer myKafka.CloseProducer()
 
 	topic := "test-round-trip-topic"
 	groupID := "test-round-trip-group"
@@ -124,13 +127,14 @@ func TestKafkaMessageRoundTrip(t *testing.T) {
 		messageReceived <- m.Value
 	}
 
-	StartConsumer(ctx, topic, groupID, handler)
+	r := myKafka.InitConsumer(topic, groupID)
+	myKafka.StartConsumer(ctx, r, handler)
 
 	// 给消费者一些时间来启动
 	time.Sleep(3 * time.Second)
 
 	// 3. 发送消息
-	err := SendMessage(topic, expectedMessage)
+	err := myKafka.SendMessage(topic, expectedMessage)
 	assert.NoError(t, err, "Sending message should not produce an error")
 
 	// 4. Wait for and Verify Message
