@@ -20,106 +20,149 @@
     - 消息推送与接收
     - 连接管理
     - 心跳检测(TODO)
-- 消息队列：Kafka(TODO)
-- 缓存：Redis(TODO)
-- 容器化：Docker(TODO)
+- 消息队列：Kafka
+- 缓存：Redis
+- 容器化：Docker
 
 ## 项目结构
 ```
 MyGoChat/
-├── api/                             # API接口层
-│   └── v1/                          # v1版本的API
-│       ├── group_controller.go      # 群组相关的控制器
-│       └── user_controller.go       # 用户相关的控制器
+├── api/                             # Protobuf API 定义
+│   └── v1/
+│       ├── message.pb.go
+│       └── message.proto
 ├── cmd/                             # 项目主入口
-│   └── main.go                      # 主函数
-├── configs/                         # 配置文件目录
-│   └── config.prod.yaml             # 生产环境配置文件
-├── deployments/                     # 部署相关文件
-│   └── docker-compose.yaml          # Docker Compose部署文件
+│   └── main.go
+├── configs/                         # 配置文件
+│   └── config.prod.yaml
+├── deployments/                     # 部署文件
+│   └── docker-compose.yaml
 ├── internal/                        # 内部业务逻辑
-│   ├── gateway/                     # 网关，处理WebSocket等
-│   │   └── socket.go                # WebSocket处理逻辑
-│   ├── logic/                       # 业务逻辑层
+│   ├── gateway/                     # 网关层
+│   │   └── socket/                  # WebSocket 连接处理
+│   │       ├── client.go            # 客户端连接
+│   │       ├── hub.go               # 连接管理器
+│   │       └── socket.go            # WebSocket 入口
+│   ├── logic/                       # 核心业务逻辑
 │   │   ├── data/                    # 数据访问层
-│   │   │   └── data.go              # 数据访问逻辑
+│   │   │   └── data.go
+│   │   ├── handler/                 # HTTP 请求处理器 (Controller)
+│   │   │   ├── group_controller.go
+│   │   │   └── user_controller.go
 │   │   ├── middleware/              # 中间件
-│   │   │   ├── cors.go              # 跨域资源共享中间件
-│   │   │   └── jwt.go               # JWT认证中间件
-│   │   ├── mq/                      # 消息队列
-│   │   │   ├── client.go            # 消息队列客户端
-│   │   │   └── server.go            # 消息队列服务端
-│   │   ├── server/                  # HTTP服务
-│   │   │   └── http.go              # HTTP服务实现
+│   │   │   ├── cors.go
+│   │   │   └── jwt.go
+│   │   ├── server/                  # HTTP 服务
+│   │   │   └── http.go
 │   │   └── service/                 # 服务层
-│   │       ├── group_service.go     # 群组服务
-│   │       ├── message_service.go   # 消息服务
-│   │       └── user_service.go      # 用户服务
+│   │       ├── group_service.go
+│   │       ├── message_service.go
+│   │       └── user_service.go
 │   ├── model/                       # 数据模型
-│   │   ├── group_member.go          # 群组成员模型
-│   │   ├── group.go                 # 群组模型
-│   │   ├── message.go               # 消息模型
-│   │   ├── user_friend.go           # 用户好友关系模型
-│   │   └── user.go                  # 用户模型
+│   │   ├── group_member.go
+│   │   ├── group.go
+│   │   ├── message.go
+│   │   ├── user_friend.go
+│   │   └── user.go
 │   └── util/                        # 工具类
-│       └── password.go              # 密码处理工具
-└── pkg/                             # 公共包
-    ├── common/                      # 通用工具
-    │   ├── request/                 # 请求体封装
-    │   │   ├── group_request.go     # 群组请求体
-    │   │   └── user_request.go      # 用户请求体
-    │   └── response/                # 响应体封装
-    │       ├── group_response.go    # 群组响应体
-    │       ├── response_msg.go      # 通用响应消息
-    │       └── user_response.go     # 用户响应体
-    ├── config/                      # 配置包
-    │   ├── config_test.go           # 配置包测试
-    │   └── config.go                # 配置包实现
-    ├── db/                          # 数据库包
-    │   ├── db_connection_test.go    # 数据库连接测试
-    │   └── postgresql.go            # PostgreSQL数据库连接
-    ├── HTML/                        # HTML文件
-    │   └── socket_test.html         # WebSocket测试页面
-    ├── kafka/                       # Kafka包
-    │   ├── consumer.go              # Kafka消费者
-    │   ├── producer.go              # Kafka生产者
-    │   └── kafka_test.go            # Kafka测试
-    ├── log/                         # 日志包
-    │   ├── logger_test.go           # 日志包测试
-    │   └── logger.go                # 日志包实现
-    ├── redis/                       # Redis包
-    └── token/                       # Token包
-        └── token.go                 # Token生成和解析
+│       └── password.go
+└── pkg/                             # 公共包/SDK
+    ├── common/                      # 通用请求/响应结构
+    │   ├── request/
+    │   │   ├── group_request.go
+    │   │   └── user_request.go
+    │   └── response/
+    │       ├── group_response.go
+    │       ├── response_msg.go
+    │       └── user_response.go
+    ├── config/                      # 配置加载
+    │   └── config.go
+    ├── db/                          # 数据库连接
+    │   └── postgresql.go
+    ├── HTML/                        # 前端测试页面
+    │   ├── message_pb.js
+    │   └── socket_test.html
+    ├── kafka/                       # Kafka 生产者/消费者
+    │   ├── consumer.go
+    │   └── producer.go
+    ├── log/                         # 日志
+    │   └── logger.go
+    ├── redis/                       # Redis 客户端
+    │   └── redis.go
+    ├── test/                        # 各类测试
+    │   ├── config_test.go
+    │   ├── db_connection_test.go
+    │   ├── kafka_test.go
+    │   └── logger_test.go
+    └── token/                       # JWT Token
+        └── token.go
 ```
 
-## 快速开始（当前尚未完善）
-### 环境要求
-- Go 1.18+
-- PostgreSQL 12+
+## 快速开始
+
+### 1. 环境准备
+
+确保你的开发环境中安装了以下软件：
+
+- Go (1.18+)
+- PostgreSQL (12+)
 - Kafka
-- Docker (可选)
+- Redis
+- Docker (可选, 用于快速启动Kafka)
 
-### 安装步骤
-1. 克隆仓库
-   ```bash
-   git clone https://github.com/RichardoKang/MyGoChat.git
-    ```
-   
-2. 进入项目目录
+### 2. 克隆与安装依赖
+
+```bash
+# 克隆仓库
+git clone https://github.com/RichardoKang/MyGoChat.git
+
+# 进入项目目录
+cd MyGoChat
+
+# 安装 Go 依赖
+go mod tidy
+```
+
+### 3. 配置
+
+项目通过 `configs/` 目录下的 `yaml` 文件进行配置。默认情况下，程序会加载 `config.dev.yaml`。 
+
+你需要从生产配置模板 `config.prod.yaml` 复制一份来创建你的本地开发配置：
+
+```bash
+# 在项目根目录下执行
+cp configs/config.prod.yaml configs/config.dev.yaml
+```
+
+然后，**修改 `configs/config.dev.yaml`** 文件，填入你本地数据库、Redis 和 Kafka 的连接信息。
+
+### 4. 运行
+
+你可以选择下面任意一种方式来启动项目及其依赖。
+
+#### 方式一：本地手动启动 (完全控制)
+
+1.  **启动依赖服务**：请确保你的本地 PostgreSQL, Redis, 和 Kafka 服务已经启动。
+
+2.  **运行 Go 应用**：在项目根目录运行以下命令：
     ```bash
-    cd MyGoChat
+    go run ./cmd/main.go
     ```
 
-3. 安装依赖
-   ```bash
-   go mod tidy
-   ```
-   
-4. 配置数据库连接
-   在`configs/config.dev.yaml`中配置数据库连接信息。
+#### 方式二：使用 Docker Compose 启动 Kafka
 
-5. 运行项目
-   ```bash
-   cd cmd/
-   go run main.go
-   ```
+`deployments/docker-compose.yaml` 文件可以帮助你快速启动一个 Kafka 实例。
+
+1.  **启动依赖服务**：请确保你的本地 PostgreSQL 和 Redis 服务已经启动。
+
+2.  **启动 Kafka**：在项目根目录运行以下命令：
+    ```bash
+    docker-compose -f deployments/docker-compose.yaml up -d
+    ```
+
+3.  **运行 Go 应用**：
+    ```bash
+    go run ./cmd/main.go
+    ```
+
+项目启动后，默认会在 `8080` 端口监听 HTTP 请求。
