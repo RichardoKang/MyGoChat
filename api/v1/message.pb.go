@@ -26,7 +26,7 @@ type Message struct {
 	Avatar        string                 `protobuf:"bytes,1,opt,name=avatar,proto3" json:"avatar,omitempty"`            //头像
 	SenderName    string                 `protobuf:"bytes,2,opt,name=senderName,proto3" json:"senderName,omitempty"`    // 发送消息用户的用户名
 	SenderID      uint32                 `protobuf:"varint,3,opt,name=senderID,proto3" json:"senderID,omitempty"`       // 发送消息用户ID
-	RecipientId   uint32                 `protobuf:"varint,4,opt,name=recipientId,proto3" json:"recipientId,omitempty"` // 接收消息用户ID
+	RecipientID   uint32                 `protobuf:"varint,4,opt,name=recipientId,proto3" json:"recipientId,omitempty"` // 接收消息用户ID
 	Content       string                 `protobuf:"bytes,5,opt,name=content,proto3" json:"content,omitempty"`          // 文本消息内容
 	Type          string                 `protobuf:"bytes,7,opt,name=type,proto3" json:"type,omitempty"`                // 消息传输类型：如果是心跳消息，该内容为heatbeat,在线视频或者音频为webrtc
 	ContentType   int32                  `protobuf:"varint,6,opt,name=contentType,proto3" json:"contentType,omitempty"` // 消息内容类型：1.文字 2.普通文件 3.图片 4.音频 5.视频 6.语音聊天 7.视频聊天
@@ -88,9 +88,9 @@ func (x *Message) GetSenderID() uint32 {
 	return 0
 }
 
-func (x *Message) GetRecipientId() uint32 {
+func (x *Message) GetRecipientID() uint32 {
 	if x != nil {
-		return x.RecipientId
+		return x.RecipientID
 	}
 	return 0
 }

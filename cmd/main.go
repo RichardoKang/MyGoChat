@@ -5,6 +5,7 @@ import (
 	"MyGoChat/internal/logic/server"
 	"MyGoChat/pkg/config"
 	_ "MyGoChat/pkg/db" // 导入db包以触发init函数
+	myKafka "MyGoChat/pkg/kafka"
 	"MyGoChat/pkg/log"
 	"net/http"
 	"time"
@@ -15,11 +16,13 @@ func main() {
 	log.Logger.Info("config", log.Any("config", config.GetConfig()))
 	log.Logger.Info("start server", log.String("start", "start web sever..."))
 
-	// Create and run the WebSocket hub
-	hub := socket.NewHub()
-	go hub.Run()
+	kafkaProducer := myKafka.InitProducer()
+	defer kafkaProducer.CloseProducer()
 
-	// Pass the hub to the router
+	hub := socket.NewHub(kafkaProducer)
+	go hub.Run()
+	defer hub.Stop()
+
 	newRouter := server.NewRouter(hub)
 
 	s := &http.Server{

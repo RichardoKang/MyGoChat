@@ -53,6 +53,7 @@ func InitConsumer(topic, groupID string) Consumer {
 		MinBytes: 10e3, // 10KB
 		MaxBytes: 10e6, // 10MB
 	})
+
 }
 
 // StartConsumer 启动一个Kafka消费者，持续读取消息并通过handler处理。

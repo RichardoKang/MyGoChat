@@ -11,9 +11,9 @@ type Message struct {
 	CreatedAt   time.Time             `json:"createAt"`
 	UpdatedAt   time.Time             `json:"updatedAt"`
 	DeletedAt   soft_delete.DeletedAt `json:"deletedAt"`
-	SenderId    uint                  `json:"senderId" gorm:"index"`
+	SenderID    uint                  `json:"senderID" gorm:"index"`
 	Sender      User                  `gorm:"foreignKey:FromUserId;references:Id"`
-	RecipientId uint                  `json:"recipientId" gorm:"index;comment:'发送给端的id，可为用户id或者群id'"`
+	RecipientID uint                  `json:"recipientId" gorm:"index;comment:'发送给端的id，可为用户id或者群id'"`
 	Content     string                `json:"content" gorm:"type:varchar(2500)"`
 	MessageType int16                 `json:"messageType" gorm:"comment:'消息类型：1单聊，2群聊'"`
 	ContentType int16                 `json:"contentType" gorm:"comment:'消息内容类型：1文字 2.普通文件 3.图片 4.音频 5.视频 6.语音聊天 7.视频聊天'"`

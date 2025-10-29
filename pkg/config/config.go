@@ -10,32 +10,40 @@ import (
 
 type (
 	YamlConfig struct {
-		AppName     string
-		PostgresSQL PostgresSQLConfig
-		Log         LogConfig
-		JwtSecret   JwtSecretConfig
-		Kafka       KafkaConfig
+		AppName     string            `yaml:"AppName"`
+		PostgresSQL PostgresSQLConfig `yaml:"PostgresSQL"`
+		Log         LogConfig         `yaml:"Log"`
+		JwtSecret   JwtSecretConfig   `yaml:"JwtSecret"`
+		Kafka       KafkaConfig       `yaml:"Kafka"`
 	}
 
 	PostgresSQLConfig struct {
-		Host     string
-		Port     int
-		User     string
-		Password string
-		DBName   string
-		SSLMode  string
-		TimeZone string
+		Host     string `yaml:"host"`
+		Port     int    `yaml:"port"`
+		User     string `yaml:"user"`
+		Password string `yaml:"password"`
+		DBName   string `yaml:"dbname"`
+		SSLMode  string `yaml:"sslmode"`
+		TimeZone string `yaml:"timezone"`
 	}
 	LogConfig struct {
-		Path  string
-		Level string
+		Path  string `yaml:"path"`
+		Level string `yaml:"level"`
 	}
 	JwtSecretConfig struct {
-		SecretKey string
+		SecretKey string `yaml:"SecretKey"`
+	}
+
+	// KafkaTopicsConfig 用于存放所有 Kafka 主题的名称
+	KafkaTopicsConfig struct {
+		Private      string `yaml:"private"`
+		Group        string `yaml:"group"`
+		Notification string `yaml:"notification"`
 	}
 
 	KafkaConfig struct {
-		Brokers []string
+		Brokers []string          `yaml:"brokers"`
+		Topics  KafkaTopicsConfig `yaml:"topics"`
 	}
 )
 
@@ -53,11 +61,11 @@ func init() {
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
-		panic(fmt.Errorf("Fatal error config file: %w \n", err))
+		panic(fmt.Errorf("Fatal error config file: %w", err))
 	}
 
 	if err := viper.Unmarshal(&config); err != nil {
-		panic(fmt.Errorf("Unable to decode into struct: %w \n", err))
+		panic(fmt.Errorf("Unable to decode into struct: %w", err))
 	}
 }
 
