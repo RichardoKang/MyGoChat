@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Group Chat Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/google-protobuf@3.20.1/google-protobuf.js"></script>
+    <script src="message_pb.js"></script>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
+        .container { border: 1px solid #ccc; padding: 20px; margin-top: 20px; border-radius: 8px; width: 800px; }
+        input { margin-bottom: 10px; padding: 8px; width: 95%; }
+        button { padding: 10px 15px; cursor: pointer; }
+        #log { border: 1px solid #ccc; padding: 10px; height: 400px; overflow-y: scroll; background: #f9f9f9; margin-top: 10px; }
+        h1, h2 { text-align: center; }
+        #groups-list { list-style-type: none; padding: 0; }
+        #groups-list li { padding: 8px; border-bottom: 1px solid #ddd; cursor: pointer; }
+        #groups-list li:hover { background-color: #f0f0f0; }
+        #groups-list li.selected { background-color: #d0e0f0; }
+    </style>
+</head>
+<body>
+
+    <h1>Group Chat Test (Protobuf)</h1>
+
+    <div class="container">
+        <h2>1. Login</h2>
+        <form onsubmit="return false;">
+            <p>Username: <input type="text" id="username" value="hawa130"></p>
+            <p>Password: <input type="password" id="password" value="114514"></p>
+            <button onclick="login()">Login</button>
+        </form>
+        <p><b>JWT Token:</b> <span id="token" style="display:inline-block; max-width:620px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:middle;"></span></p>
+    </div>
+
+    <div class="container">
+        <h2>2. Groups</h2>
+        <button id="getGroupsBtn" onclick="getMyGroups()" disabled>Get My Groups</button>
+        <h3>My Groups:</h3>
+        <ul id="groups-list"></ul>
+        <hr>
+        <h3>Group Members:</h3>
+        <button id="getMembersBtn" onclick="getGroupMembers()" disabled>Get Group Members</button>
+        <ul id="members-list"></ul>
+    </div>
+
+    <div class="container">
+        <h2>3. WebSocket Connection</h2>
+        <button id="connectBtn" onclick="connect()" disabled>Connect</button>
+        <hr>
+        <p>Selected Group Number: <input type="text" id="groupNumberInput" readonly></p>
+        <p>Message: <input type="text" id="message" size="50"></p>
+        <button onclick="sendMessage()">Send Group Message (Protobuf)</button>
+        <h2>Log:</h2>
+        <pre id="log"></pre>
+    </div>
+
+<script>
+    let ws;
+    let jwtToken;
+    let selectedGroupNumber; // Stores the group's GroupNumber (string) for display and sending
+    const logDiv = document.getElementById('log');
+    const tokenSpan = document.getElementById('token');
+    const getGroupsBtn = document.getElementById('getGroupsBtn');
+    const getMembersBtn = document.getElementById('getMembersBtn');
+    const connectBtn = document.getElementById('connectBtn');
+    const groupsList = document.getElementById('groups-list');
+    const membersList = document.getElementById('members-list');
+    const groupNumberInput = document.getElementById('groupNumberInput');
+
+    function log(message) {
+        logDiv.innerHTML += `[${new Date().toLocaleTimeString()}] ${message}
+`;
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    async function login() {
+        log('INFO: login function called.');
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+
+        try {
+            const response = await fetch('http://localhost:8080/api/user/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            log(`INFO: Login request sent. Status: ${response.status}`);
+            const data = await response.json();
+
+            if (response.ok && data.data && data.data.token) {
+                jwtToken = data.data.token;
+                tokenSpan.textContent = jwtToken;
+                log('INFO: Login successful. Token received.');
+                getGroupsBtn.disabled = false;
+                connectBtn.disabled = false;
+            } else {
+                const errorMsg = data.msg || 'Login failed';
+                log(`ERROR: ${errorMsg}`);
+                tokenSpan.textContent = 'Login Failed!';
+            }
+        } catch (error) {
+            log('FATAL: Error during login fetch.');
+            log('ERROR: ' + error);
+        }
+    }
+
+    async function getMyGroups() {
+        log('INFO: getMyGroups function called.');
+        if (!jwtToken) {
+            log('ERROR: Cannot get groups without JWT token.');
+            alert('Please login first.');
+            return;
+        }
+
+        try {
+            const response = await fetch('http://localhost:8080/api/group/mine', {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${jwtToken}` }
+            });
+            log(`INFO: Get groups request sent. Status: ${response.status}`);
+            const data = await response.json();
+
+            if (response.ok && data.data) {
+                log('INFO: Groups received.');
+                groupsList.innerHTML = '';
+                data.data.forEach(group => {
+                    const li = document.createElement('li');
+                    li.textContent = `${group.name} (Number: ${group.groupNumber}, ID: ${group.id})`;
+                    li.dataset.groupNumber = group.groupNumber;
+                    li.addEventListener('click', () => {
+                        log(`INFO: li.onclick triggered for group.groupNumber: ${group.groupNumber}`);
+                        if (selectedGroupNumber) {
+                            const previouslySelected = document.querySelector(`li[data-group-number='${selectedGroupNumber}']`);
+                            if (previouslySelected) {
+                                previouslySelected.classList.remove('selected');
+                            }
+                        }
+                        selectedGroupNumber = group.groupNumber;
+                        li.classList.add('selected');
+                        groupNumberInput.value = selectedGroupNumber;
+                        log(`INFO: Set selectedGroupNumber to: ${selectedGroupNumber}`);
+                        getMembersBtn.disabled = false;
+                        membersList.innerHTML = ''; // Clear previous members list
+                    });
+                    groupsList.appendChild(li);
+                });
+            } else {
+                const errorMsg = data.msg || 'Failed to get groups';
+                log(`ERROR: ${errorMsg}`);
+            }
+        } catch (error) {
+            log('FATAL: Error during getMyGroups fetch.');
+            log('ERROR: ' + error);
+        }
+    }
+
+    async function getGroupMembers() {
+        log('INFO: getGroupMembers function called.');
+        if (!selectedGroupNumber) {
+            log('ERROR: No group selected.');
+            alert('Please select a group first.');
+            return;
+        }
+
+        try {
+            const response = await fetch(`http://localhost:8080/api/group/${selectedGroupNumber}/members`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${jwtToken}` }
+            });
+            log(`INFO: Get group members request sent. Status: ${response.status}`);
+            const data = await response.json();
+
+            if (response.ok && data.data) {
+                log('INFO: Group members received.');
+                membersList.innerHTML = '';
+                data.data.forEach(member => {
+                    const li = document.createElement('li');
+                    li.textContent = `Username: ${member.username}, Nickname: ${member.nickname} (UserID: ${member.userid})`;
+                    membersList.appendChild(li);
+                });
+            } else {
+                const errorMsg = data.msg || 'Failed to get group members';
+                log(`ERROR: ${errorMsg}`);
+            }
+        } catch (error) {
+            log('FATAL: Error during getGroupMembers fetch.');
+            log('ERROR: ' + error);
+        }
+    }
+
+    function connect() {
+        log('INFO: connect function called.');
+        if (!jwtToken) {
+            log('ERROR: Cannot connect without JWT token.');
+            alert('Please login first to get a JWT token.');
+            return;
+        }
+        const url = `ws://localhost:8080/ws?token=${jwtToken}`;
+        log(`INFO: Connecting to ${url}`);
+        ws = new WebSocket(url);
+        ws.binaryType = 'arraybuffer';
+
+        ws.onopen = function(event) {
+            log(`INFO: Connection opened. WebSocket readyState: ${ws.readyState}`);
+        };
+
+        ws.onmessage = function(event) {
+            log(`INFO: onmessage event fired. Received ${event.data.byteLength} bytes.`);
+            try {
+                const msg = proto.v1.Message.deserializeBinary(event.data);
+                const msgObject = msg.toObject();
+                log('RECV: ' + JSON.stringify(msgObject, null, 2));
+            } catch (e) {
+                log('FATAL: Error deserializing message.');
+                log('ERROR: ' + e.message);
+                console.error('Deserialization error:', e);
+            }
+        };
+
+        ws.onclose = function(event) {
+            log(`INFO: Connection closed. Code: ${event.code}, Reason: ${event.reason}`);
+            ws = null;
+        };
+
+        ws.onerror = function(event) {
+            log('ERROR: WebSocket error occurred.');
+            console.error('WebSocket error:', event);
+        };
+    }
+
+    function sendMessage() {
+        log('INFO: sendMessage function called.');
+        log(`INFO: Current selectedGroupNumber is: ${selectedGroupNumber}`);
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            log('ERROR: WebSocket not connected or not open.');
+            alert('Not connected. Please connect first.');
+            return;
+        }
+        if (!selectedGroupNumber) {
+            log('ERROR: No group selected.');
+            alert('Please select a group first.');
+            return;
+        }
+
+        try {
+            const content = document.getElementById('message').value;
+            const recipientId = parseInt(selectedGroupNumber, 10);
+            if (isNaN(recipientId)) {
+                log('ERROR: Invalid Group Number. Must be an integer.');
+                alert('Invalid Group Number.');
+                return;
+            }
+
+            log(`INFO: Preparing to send message to group number: ${selectedGroupNumber} (as recipientID: ${recipientId}).`);
+
+            const msg = new proto.v1.Message();
+            log('INFO: Protobuf message object created successfully.');
+
+            msg.setSenderid(0); 
+            msg.setRecipientid(recipientId); // Use groupNumber (parsed as int) for protobuf
+            msg.setContent(content);
+            msg.setMessagetype(2); // 2 for group chat
+            msg.setContenttype(1);  // 1 for text message
+            log('INFO: Message fields set.');
+
+            const payload = msg.serializeBinary();
+            log(`INFO: Message serialized to ${payload.length} bytes.`);
+            
+            ws.send(payload);
+            log('SENT: [Protobuf binary data]');
+            document.getElementById('message').value = '';
+        } catch (e) {
+            log('FATAL: An error occurred in sendMessage.');
+            log('ERROR: ' + e.message);
+            console.error('sendMessage error:', e);
+        }
+    }
+</script>
+</body>
+</html>

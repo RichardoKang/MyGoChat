@@ -75,7 +75,7 @@ func (g *groupService) GetMyGroups(userUuid string) ([]response.GroupResponse, e
 	var queryGroups []response.GroupResponse
 	// 根据用户ID查询所属群组
 	result = d.Table("groups").
-		Select("groups.uuid, groups.name, groups.created_at").
+		Select("groups.uuid,groups.group_number, groups.created_at, groups.name").
 		Joins("join group_members on groups.id = group_members.group_id").
 		Where("group_members.user_id = ?", user.ID).
 		Scan(&queryGroups) //Scan方法将结果映射到切片中
@@ -152,7 +152,8 @@ func (g *groupService) GetGroupMembers(GroupNumber string) ([]response.GroupMemb
 	logger := log.Logger
 	d := db.GetDB()
 
-	var group model.Group
+	// get group by group number
+	group := model.Group{}
 	result := d.Find(&group, "group_number = ?", GroupNumber)
 	if result.Error != nil {
 		logger.Error("GetGroupMembers: group not found")
@@ -161,7 +162,7 @@ func (g *groupService) GetGroupMembers(GroupNumber string) ([]response.GroupMemb
 
 	var members []response.GroupMemberResponse
 	result = d.Table("group_members").
-		Select("users.uuid, users.username, group_members.nickname, group_members.mute").
+		Select("group_members.user_id, users.username, group_members.nickname, group_members.mute").
 		Joins("join users on group_members.user_id = users.id").
 		Where("group_members.group_id = ?", group.ID).
 		Scan(&members)

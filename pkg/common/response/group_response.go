@@ -1,6 +1,8 @@
 package response
 
-import "time"
+import (
+	"time"
+)
 
 type GroupResponse struct {
 	Uuid        string    `json:"uuid"`
@@ -10,6 +12,7 @@ type GroupResponse struct {
 }
 
 type GroupMemberResponse struct {
+	UserID   uint   `json:"userid"`
 	Username string `json:"username"`
 	Nickname string `json:"nickname"`
 	Muted    bool   `json:"muted"`

@@ -2,10 +2,12 @@ package socket
 
 import (
 	pb "MyGoChat/api/v1"
+	"MyGoChat/internal/logic/service"
 	"MyGoChat/pkg/config"
 	myKafka "MyGoChat/pkg/kafka"
 	"MyGoChat/pkg/log"
 	"context"
+	"strconv"
 	"sync"
 
 	"github.com/segmentio/kafka-go"
@@ -80,6 +82,34 @@ func (h *Hub) dispatchGroupMessage(kafkaMsg kafka.Message) {
 	if err := proto.Unmarshal(kafkaMsg.Value, &msg); err != nil {
 		log.Logger.Sugar().Errorf("Error unmarshalling group message: %v", err)
 		return
+	}
+
+	members, err := service.GroupService.GetGroupMembers(strconv.Itoa(int(msg.RecipientID)))
+
+	if err != nil {
+		log.Logger.Sugar().Errorf("Error getting group members: %v", err)
+	}
+
+	for _, member := range members {
+		h.mu.RLock()
+		recipientClient, ok := h.clients[uint(member.UserID)]
+		h.mu.RUnlock()
+
+		if ok {
+			log.Logger.Sugar().Infof("HUB: Recipient %d found. Forwarding private message.", member.UserID)
+			select {
+			case recipientClient.send <- kafkaMsg.Value:
+				log.Logger.Sugar().Infof("HUB: Message sent to user %d's send channel.", member.UserID)
+			default:
+				log.Logger.Sugar().Warnf("HUB: User %d's send channel is full or closed. Closing connection.", member.UserID)
+				h.mu.Lock()
+				close(recipientClient.send)
+				delete(h.clients, recipientClient.userID)
+				h.mu.Unlock()
+			}
+		} else {
+			log.Logger.Sugar().Warnf("HUB: Recipient client with ID %d not found for private message.", member.UserID)
+		}
 	}
 
 	// TODO: 实现群聊消息分发逻辑
