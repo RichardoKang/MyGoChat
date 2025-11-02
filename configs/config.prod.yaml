@@ -24,6 +24,11 @@ Kafka:
     group: "msg_group"
     notification: "msg_notification"
 
+redis:
+  addr: "127.0.0.1:6379" # 替换为你的 Redis 地址
+  password: "your_pass_word" # 如果有密码请填写
+  db: 0                  # 使用的数据库编号
+
 Mongo:
   uri: "mongodb://admin:admin@localhost:27017" # 替换为你的 MongoDB 连接字符串
   database: "mygochat"

@@ -2,9 +2,11 @@ package data
 
 import (
 	"MyGoChat/pkg/config"
+	"MyGoChat/pkg/log"
 	"context"
 	"fmt"
 
+	"github.com/go-redis/redis/v8"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"gorm.io/driver/postgres"
@@ -14,6 +16,7 @@ import (
 
 type Data struct {
 	mdb *mongo.Database
+	rdb *redis.Client
 	db  *gorm.DB
 }
 
@@ -21,9 +24,11 @@ func NewData(cfg config.YamlConfig) (*Data, func(), error) {
 
 	data := &Data{
 		mdb: initMongoDB(cfg),
+		rdb: initRedisDB(cfg),
 		db:  initPostgresDB(cfg),
 	}
 
+	log.Logger.Sugar().Infof("init data success")
 	cleanup := func() {
 		sqlDB, _ := data.db.DB()
 		sqlDB.Close()
@@ -40,6 +45,10 @@ func (d *Data) GetDB() *gorm.DB {
 
 func (d *Data) GetMongoDB() *mongo.Database {
 	return d.mdb
+}
+
+func (d *Data) GetRedisClient() *redis.Client {
+	return d.rdb
 }
 
 func initPostgresDB(cfg config.YamlConfig) *gorm.DB {
@@ -73,6 +82,20 @@ func initMongoDB(cfg config.YamlConfig) *mongo.Database {
 	mdb := mongoClient.Database(cfg.Mongo.Database)
 
 	return mdb
+}
+
+func initRedisDB(cfg config.YamlConfig) *redis.Client {
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     cfg.Redis.Addr,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+	})
+
+	if _, err := rdb.Ping(context.Background()).Result(); err != nil {
+		panic("连接Redis失败, error=" + err.Error())
+	}
+
+	return rdb
 }
 
 func getDSN(cfg config.YamlConfig) string {

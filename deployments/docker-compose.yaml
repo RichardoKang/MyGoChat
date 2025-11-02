@@ -38,3 +38,15 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: "admin"
     volumes:
         - /app/data/mongo:/data/db
+
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    restart: always
+    ports:
+      - '6379:6379'
+    #配置文件启动
+    volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
