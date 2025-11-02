@@ -22,11 +22,11 @@
     - 心跳检测(TODO)
 - 消息队列：Kafka
 - 消息持久化：MongoDB(TODO)
-- 缓存：Redis(TODO)
+- 在线状态：Redis(TODO)
 - 容器化：Docker
 
 ## 项目结构
-
+````
 MyGoChat/
 ├── api/
 │   └── v1/
@@ -93,7 +93,7 @@ MyGoChat/
 │   └── logger_test.go
 └── token/
 └── token.go
-
+```
 ## 快速开始
 
 ### 1. 环境准备
