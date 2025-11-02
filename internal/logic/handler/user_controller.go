@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"MyGoChat/internal/logic/service"
 	"MyGoChat/internal/model"
 	"MyGoChat/pkg/common/request"
 	"MyGoChat/pkg/common/response"
@@ -10,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func Register(c *gin.Context) {
+func (h *Handler) Register(c *gin.Context) {
 	var req request.UserRegisterRequest
 	var res response.UserResponse
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -29,7 +28,7 @@ func Register(c *gin.Context) {
 		Avatar:   user.Avatar,
 	}
 
-	token, err := service.UserService.Register(&user)
+	token, err := h.UserService.Register(&user)
 	if err != nil {
 		c.JSON(http.StatusOK, response.FailMsg(err.Error()))
 		return
@@ -38,7 +37,7 @@ func Register(c *gin.Context) {
 	c.JSON(http.StatusOK, response.SuccessMsg(gin.H{"user": res, "token": token}))
 }
 
-func Login(c *gin.Context) {
+func (h *Handler) Login(c *gin.Context) {
 	var req request.UserLoginRequest
 	var res response.UserResponse
 	if err := c.ShouldBind(&req); err != nil {
@@ -57,7 +56,7 @@ func Login(c *gin.Context) {
 		Avatar:   user.Avatar,
 	}
 
-	token, err := service.UserService.Login(&user)
+	token, err := h.UserService.Login(&user)
 	// 处理返回...
 	if err != nil {
 		c.JSON(http.StatusOK, response.FailMsg(err.Error()))
@@ -67,7 +66,7 @@ func Login(c *gin.Context) {
 	c.JSON(http.StatusOK, response.SuccessMsg(gin.H{"user": res, "token": token}))
 }
 
-func Update(c *gin.Context) {
+func (h *Handler) Update(c *gin.Context) {
 	var req request.UserUpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, response.FailMsg(err.Error()))
@@ -88,7 +87,7 @@ func Update(c *gin.Context) {
 	}
 	userUuid := value.(string)
 
-	err := service.UserService.Update(&user, userUuid)
+	err := h.UserService.Update(&user, userUuid)
 	if err != nil {
 		c.JSON(http.StatusOK, response.FailMsg(err.Error()))
 		return

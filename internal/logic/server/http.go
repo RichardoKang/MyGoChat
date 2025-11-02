@@ -4,20 +4,28 @@ import (
 	"MyGoChat/internal/gateway/socket"
 	"MyGoChat/internal/logic/handler"
 	"MyGoChat/internal/logic/middleware"
+	"MyGoChat/internal/logic/service"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
 
-func NewRouter(hub *socket.Hub) *gin.Engine {
+func NewRouter(hub *socket.Hub, userService *service.UserService, groupService *service.GroupService, messageService *service.MessageService) *gin.Engine {
 	gin.SetMode(gin.DebugMode)
 
 	r := gin.Default()
 
+	// Create a handler instance with all the services
+	h := &handler.Handler{
+		UserService:    userService,
+		GroupService:   groupService,
+		MessageService: messageService,
+	}
+
 	// CORS Middleware
 	r.Use(middleware.CORSMiddleware())
 
-	r.GET("/ws", middleware.JWTAuthMiddleware(), func(c *gin.Context) {
+	r.GET("/ws", middleware.JWTAuthMiddleware(h.UserService), func(c *gin.Context) {
 		socket.ServeWs(hub, c)
 	})
 
@@ -31,23 +39,23 @@ func NewRouter(hub *socket.Hub) *gin.Engine {
 		// hostname/api/user
 		user := api.Group("/user")
 		{
-			user.POST("/register", handler.Register)
-			user.POST("/login", handler.Login)
+			user.POST("/register", h.Register)
+			user.POST("/login", h.Login)
 
 			info := user.Group("/info")
-			info.Use(middleware.JWTAuthMiddleware())
+			info.Use(middleware.JWTAuthMiddleware(h.UserService))
 			{
-				info.PUT("/update", handler.Update)
+				info.PUT("/update", h.Update)
 			}
 		}
 		// hostname/api/group
 		group := api.Group("/group")
 		{
-			group.Use(middleware.JWTAuthMiddleware())
-			group.POST("/create", handler.CreateGroup)
-			group.GET("/mine", handler.GetMyGroups)
-			group.POST("/join", handler.JoinGroup)
-			group.GET("/:groupnumber/members", handler.GetGroupMembers)
+			group.Use(middleware.JWTAuthMiddleware(h.UserService))
+			group.POST("/create", h.CreateGroup)
+			group.GET("/mine", h.GetMyGroups)
+			group.POST("/join", h.JoinGroup)
+			group.GET("/:groupnumber/members", h.GetGroupMembers)
 		}
 
 	}

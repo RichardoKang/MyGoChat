@@ -25,3 +25,16 @@ services:
       # 允许自动创建 Topic
       KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_CFG_NUM_PARTITIONS: "3"
+
+  mongo:
+    image: mongo:latest
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    # restart 意思是无论容器退出状态如何，都会自动重启容器
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "admin"
+      MONGO_INITDB_ROOT_PASSWORD: "admin"
+    volumes:
+        - /app/data/mongo:/data/db

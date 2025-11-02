@@ -25,9 +25,10 @@ type Hub struct {
 	GroupConsumer   myKafka.Consumer
 	ctx             context.Context
 	cancel          context.CancelFunc
+	GroupService    *service.GroupService // 注入 GroupService
 }
 
-func NewHub(producer *myKafka.Producer) *Hub {
+func NewHub(producer *myKafka.Producer, groupService *service.GroupService) *Hub {
 	ctx, cancel := context.WithCancel(context.Background())
 	cfg := config.GetConfig()
 	// 初始化私聊和群聊的消费者
@@ -43,6 +44,7 @@ func NewHub(producer *myKafka.Producer) *Hub {
 		GroupConsumer:   groupConsumer,
 		ctx:             ctx,
 		cancel:          cancel,
+		GroupService:    groupService, // 赋值
 	}
 }
 
@@ -84,7 +86,7 @@ func (h *Hub) dispatchGroupMessage(kafkaMsg kafka.Message) {
 		return
 	}
 
-	members, err := service.GroupService.GetGroupMembers(strconv.Itoa(int(msg.RecipientID)))
+	members, err := h.GroupService.GetGroupMembers(strconv.Itoa(int(msg.RecipientID)))
 
 	if err != nil {
 		log.Logger.Sugar().Errorf("Error getting group members: %v", err)

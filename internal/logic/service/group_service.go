@@ -1,9 +1,9 @@
 package service
 
 import (
+	"MyGoChat/internal/logic/data"
 	"MyGoChat/internal/model"
 	"MyGoChat/pkg/common/response"
-	"MyGoChat/pkg/db"
 	"MyGoChat/pkg/log"
 	"fmt"
 	"math/rand"
@@ -12,14 +12,17 @@ import (
 	"github.com/google/uuid"
 )
 
-type groupService struct {
+type GroupService struct {
+	data *data.Data
 }
 
-var GroupService = new(groupService)
+func NewGroupService(data *data.Data) *GroupService {
+	return &GroupService{data: data}
+}
 
-func (g *groupService) CreateGroup(group *model.Group, adminUserUuid string) error {
+func (s *GroupService) CreateGroup(group *model.Group, adminUserUuid string) error {
 	logger := log.Logger
-	d := db.GetDB()
+	d := s.data.GetDB()
 
 	// 确保表存在
 	if err := d.AutoMigrate(&model.Group{}, &model.GroupMember{}); err != nil {
@@ -60,10 +63,10 @@ func (g *groupService) CreateGroup(group *model.Group, adminUserUuid string) err
 
 }
 
-func (g *groupService) GetMyGroups(userUuid string) ([]response.GroupResponse, error) {
+func (s *GroupService) GetMyGroups(userUuid string) ([]response.GroupResponse, error) {
 	logger := log.Logger
 
-	d := db.GetDB()
+	d := s.data.GetDB()
 
 	var user model.User
 	result := d.Find(&user, "uuid = ?", userUuid)
@@ -90,9 +93,9 @@ func (g *groupService) GetMyGroups(userUuid string) ([]response.GroupResponse, e
 
 }
 
-func (g *groupService) GetGroupByGroupNumber(groupNumber string) (response.GroupResponse, error) {
+func (s *GroupService) GetGroupByGroupNumber(groupNumber string) (response.GroupResponse, error) {
 	logger := log.Logger
-	d := db.GetDB()
+	d := s.data.GetDB()
 
 	var group model.Group
 	result := d.Find(&group, "group_number = ?", groupNumber)
@@ -110,9 +113,9 @@ func (g *groupService) GetGroupByGroupNumber(groupNumber string) (response.Group
 	return groupResponse, nil
 }
 
-func (g *groupService) JoinGroup(userUuid string, groupNumber string, nickname string) error {
+func (s *GroupService) JoinGroup(userUuid string, groupNumber string, nickname string) error {
 	logger := log.Logger
-	d := db.GetDB()
+	d := s.data.GetDB()
 
 	var user model.User
 	result := d.Find(&user, "uuid = ?", userUuid)
@@ -148,9 +151,9 @@ func (g *groupService) JoinGroup(userUuid string, groupNumber string, nickname s
 	return nil
 }
 
-func (g *groupService) GetGroupMembers(GroupNumber string) ([]response.GroupMemberResponse, error) {
+func (s *GroupService) GetGroupMembers(GroupNumber string) ([]response.GroupMemberResponse, error) {
 	logger := log.Logger
-	d := db.GetDB()
+	d := s.data.GetDB()
 
 	// get group by group number
 	group := model.Group{}

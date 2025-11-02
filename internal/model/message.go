@@ -3,20 +3,35 @@ package model
 import (
 	"time"
 
-	"gorm.io/plugin/soft_delete"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type Message struct {
-	Uuid        string                `json:"uuid" gorm:"primarykey"`
-	CreatedAt   time.Time             `json:"createAt"`
-	UpdatedAt   time.Time             `json:"updatedAt"`
-	DeletedAt   soft_delete.DeletedAt `json:"deletedAt"`
-	SenderID    uint                  `json:"senderID" gorm:"index"`
-	Sender      User                  `gorm:"foreignKey:FromUserId;references:Id"`
-	RecipientID uint                  `json:"recipientId" gorm:"index;comment:'发送给端的id，可为用户id或者群id'"`
-	Content     string                `json:"content" gorm:"type:varchar(2500)"`
-	MessageType int16                 `json:"messageType" gorm:"comment:'消息类型：1单聊，2群聊'"`
-	ContentType int16                 `json:"contentType" gorm:"comment:'消息内容类型：1文字 2.普通文件 3.图片 4.音频 5.视频 6.语音聊天 7.视频聊天'"`
-	Pic         string                `json:"pic" gorm:"type:text;comment:'缩略图'"`
-	Url         string                `json:"url" gorm:"type:varchar(350);comment:'文件或者图片地址'"`
+	ID             primitive.ObjectID `bson:"_id,omitempty"`
+	ConversationID primitive.ObjectID `bson:"conversationID"` // 索引: 属于哪个会话
+	SenderID       string             `bson:"senderID"`       // 索引: 谁发的 (用户的 UUID string)
+	Timestamp      int64              `bson:"timestamp"`      // 索引: 消息发送时间
+	ContentType    int16              `bson:"contentType"`    // 1=text, 2=image, 3=file, 4=voice
+	Body           any                `bson:"body"`           // ContentType=1: "Hello" (string)， ContentType=2/3/...: FileAttachment 结构体
+	Metadata       *MessageMetadata   `bson:"metadata,omitempty"`
+	DeletedAt      *time.Time         `bson:"deletedAt,omitempty"`
 }
+
+// FileAttachment 用于 Body 字段 (当 ContentType 不是 text 时)
+type FileAttachment struct {
+	URL      string `bson:"url" json:"url"`           // MinIO/S3 的 URL
+	FileName string `bson:"fileName" json:"fileName"` // "简历.pdf"
+	Size     int64  `bson:"size" json:"size"`         // 文件大小 (bytes)
+	MimeType string `bson:"mimeType" json:"mimeType"` // "image/jpeg"
+}
+
+// MessageMetadata 用于存储回复、@ 等元数据
+type MessageMetadata struct {
+	ReplyToMsgID string `bson:"replyToMsgID,omitempty"` // 回复的消息 ID (用 string 存 ObjectID)
+}
+
+//// IMessageRepo 定义了消息数据的接口
+//type IMessageRepo interface {
+//	CreateMessage(ctx context.Context, msg *Message) error
+//	GetMessagesByConversationID(ctx context.Context, convID string, limit int64) ([]*Message, error)
+//}

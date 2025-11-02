@@ -2,9 +2,10 @@ package main
 
 import (
 	"MyGoChat/internal/gateway/socket"
+	"MyGoChat/internal/logic/data"
 	"MyGoChat/internal/logic/server"
+	"MyGoChat/internal/logic/service"
 	"MyGoChat/pkg/config"
-	_ "MyGoChat/pkg/db" // 导入db包以触发init函数
 	myKafka "MyGoChat/pkg/kafka"
 	"MyGoChat/pkg/log"
 	"net/http"
@@ -16,14 +17,26 @@ func main() {
 	log.Logger.Info("config", log.Any("config", config.GetConfig()))
 	log.Logger.Info("start server", log.String("start", "start web sever..."))
 
+	// Init Data
+	data, cleanup, err := data.NewData(config.GetConfig())
+	if err != nil {
+		panic(err)
+	}
+	defer cleanup()
+
+	// Init Services
+	userService := service.NewUserService(data)
+	groupService := service.NewGroupService(data)
+	messageService := service.NewMessageService(data)
+
 	kafkaProducer := myKafka.InitProducer()
 	defer kafkaProducer.CloseProducer()
 
-	hub := socket.NewHub(kafkaProducer)
+	hub := socket.NewHub(kafkaProducer, groupService)
 	go hub.Run()
 	defer hub.Stop()
 
-	newRouter := server.NewRouter(hub)
+	newRouter := server.NewRouter(hub, userService, groupService, messageService)
 
 	s := &http.Server{
 		Addr:           ":8080",
@@ -32,7 +45,7 @@ func main() {
 		WriteTimeout:   10 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
-	err := s.ListenAndServe()
+	err = s.ListenAndServe()
 	if nil != err {
 		log.Logger.Error("server error", log.Any("serverError", err))
 	}

@@ -15,6 +15,7 @@ type (
 		Log         LogConfig         `yaml:"Log"`
 		JwtSecret   JwtSecretConfig   `yaml:"JwtSecret"`
 		Kafka       KafkaConfig       `yaml:"Kafka"`
+		Mongo       MongoConfig       `yaml:"MongoDB"`
 	}
 
 	PostgresSQLConfig struct {
@@ -44,6 +45,11 @@ type (
 	KafkaConfig struct {
 		Brokers []string          `yaml:"brokers"`
 		Topics  KafkaTopicsConfig `yaml:"topics"`
+	}
+
+	MongoConfig struct {
+		URI      string `yaml:"uri"`
+		Database string `yaml:"database"`
 	}
 )
 

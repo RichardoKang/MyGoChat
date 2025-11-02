@@ -9,8 +9,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// JWTAuthMiddleware 用来验证JWT令牌的中间件，确保请求携带有效的令牌。
-func JWTAuthMiddleware() gin.HandlerFunc {
+// JWTAuthMiddleware creates a middleware function that validates JWT tokens.
+// It takes a UserService to verify the user exists.
+func JWTAuthMiddleware(userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 检查token
 		tokenString := c.GetHeader("Authorization")
@@ -35,7 +36,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		user, err := service.UserService.GetUserByUuid(claims.UserUuid)
+		user, err := userService.GetUserByUuid(claims.UserUuid)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, response.FailMsg("Invalid user"))
 			c.Abort()

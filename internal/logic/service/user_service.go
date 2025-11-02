@@ -1,9 +1,9 @@
 package service
 
 import (
+	"MyGoChat/internal/logic/data"
 	"MyGoChat/internal/model"
 	"MyGoChat/internal/util"
-	"MyGoChat/pkg/db"
 	"MyGoChat/pkg/log"
 	"MyGoChat/pkg/token"
 	"errors"
@@ -12,14 +12,17 @@ import (
 	"github.com/google/uuid"
 )
 
-type userService struct {
+type UserService struct {
+	data *data.Data
 }
 
-var UserService = new(userService)
+func NewUserService(data *data.Data) *UserService {
+	return &UserService{data: data}
+}
 
-func (u *userService) Register(user *model.User) (string, error) {
+func (s *UserService) Register(user *model.User) (string, error) {
 	logger := log.Logger
-	d := db.GetDB()
+	d := s.data.GetDB() // 使用注入的 data
 
 	// 确保表存在
 	if err := d.AutoMigrate(&model.User{}); err != nil {
@@ -63,8 +66,8 @@ func (u *userService) Register(user *model.User) (string, error) {
 	return tokenString, nil
 }
 
-func (u *userService) Login(user *model.User) (string, error) {
-	d := db.GetDB()
+func (s *UserService) Login(user *model.User) (string, error) {
+	d := s.data.GetDB() // 使用注入的 data
 	var dbUser model.User
 	if res := d.Select("*").Where("username = ?", user.Username).First(&dbUser); res.Error != nil {
 		return "", errors.New("invalid username or password")
@@ -91,14 +94,14 @@ func (u *userService) Login(user *model.User) (string, error) {
 	return tokenString, nil
 }
 
-func (u *userService) Update(user *model.User, userUuid string) error {
+func (s *UserService) Update(user *model.User, userUuid string) error {
 	user.Uuid = userUuid
 
 	if user.Uuid == "" {
 		return errors.New("invalid user data")
 	}
 
-	d := db.GetDB()
+	d := s.data.GetDB() // 使用注入的 data
 
 	updateData := map[string]any{}
 	if user.Nickname != "" {
@@ -125,8 +128,8 @@ func (u *userService) Update(user *model.User, userUuid string) error {
 	return nil
 }
 
-func (u *userService) GetUserByUuid(uuid string) (*model.User, error) {
-	d := db.GetDB()
+func (s *UserService) GetUserByUuid(uuid string) (*model.User, error) {
+	d := s.data.GetDB() // 使用注入的 data
 	var user model.User
 	if res := d.Where("uuid = ?", uuid).First(&user); res.Error != nil {
 		return nil, res.Error
@@ -134,8 +137,8 @@ func (u *userService) GetUserByUuid(uuid string) (*model.User, error) {
 	return &user, nil
 }
 
-func (u *userService) GetUserByID(id uint) (*model.User, error) {
-	d := db.GetDB()
+func (s *UserService) GetUserByID(id uint) (*model.User, error) {
+	d := s.data.GetDB() // 使用注入的 data
 	var user model.User
 	if res := d.First(&user, id); res.Error != nil {
 		return nil, res.Error

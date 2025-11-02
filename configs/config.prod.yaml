@@ -23,3 +23,7 @@ Kafka:
     private: "msg_private"
     group: "msg_group"
     notification: "msg_notification"
+
+Mongo:
+  uri: "mongodb://admin:admin@localhost:27017" # 替换为你的 MongoDB 连接字符串
+  database: "mygochat"

@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"MyGoChat/internal/logic/service"
 	"MyGoChat/internal/model"
 	"MyGoChat/pkg/common/request"
 	"MyGoChat/pkg/common/response"
@@ -11,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func CreateGroup(c *gin.Context) {
+func (h *Handler) CreateGroup(c *gin.Context) {
 	var req request.CreateGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, response.FailMsg(err.Error()))
@@ -35,14 +34,14 @@ func CreateGroup(c *gin.Context) {
 		Name: req.GroupName,
 	}
 
-	if err := service.GroupService.CreateGroup(group, adminUserUuid); err != nil {
+	if err := h.GroupService.CreateGroup(group, adminUserUuid); err != nil {
 		c.JSON(http.StatusInternalServerError, response.FailMsg(err.Error()))
 		return
 	}
 	c.JSON(http.StatusOK, response.SuccessMsg(group))
 }
 
-func GetMyGroups(c *gin.Context) {
+func (h *Handler) GetMyGroups(c *gin.Context) {
 	value, exist := c.Get("useruuid")
 	if !exist {
 		c.JSON(http.StatusUnauthorized, response.FailMsg("Unauthorized"))
@@ -50,7 +49,7 @@ func GetMyGroups(c *gin.Context) {
 	}
 	userUuid := value.(string)
 
-	groups, err := service.GroupService.GetMyGroups(userUuid)
+	groups, err := h.GroupService.GetMyGroups(userUuid)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, response.FailMsg(err.Error()))
 		return
@@ -58,7 +57,7 @@ func GetMyGroups(c *gin.Context) {
 	c.JSON(http.StatusOK, response.SuccessMsg(groups))
 }
 
-func JoinGroup(c *gin.Context) {
+func (h *Handler) JoinGroup(c *gin.Context) {
 	var req request.JoinGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, response.FailMsg(err.Error()))
@@ -72,21 +71,21 @@ func JoinGroup(c *gin.Context) {
 	}
 	userUuid := value.(string)
 
-	if err := service.GroupService.JoinGroup(userUuid, req.GroupNumber, req.Nickname); err != nil {
+	if err := h.GroupService.JoinGroup(userUuid, req.GroupNumber, req.Nickname); err != nil {
 		c.JSON(http.StatusInternalServerError, response.FailMsg(err.Error()))
 		return
 	}
 	c.JSON(http.StatusOK, response.SuccessMsg("Joined group successfully"))
 }
 
-func GetGroupMembers(c *gin.Context) {
+func (h *Handler) GetGroupMembers(c *gin.Context) {
 	var req request.GetGroupMembersRequest
 	if err := c.ShouldBindUri(&req); err != nil {
 		c.JSON(http.StatusBadRequest, response.FailMsg(err.Error()))
 		return
 	}
 
-	members, err := service.GroupService.GetGroupMembers(req.GroupNumber)
+	members, err := h.GroupService.GetGroupMembers(req.GroupNumber)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, response.FailMsg(err.Error()))
 		return
