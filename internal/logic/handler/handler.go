@@ -8,4 +8,5 @@ type Handler struct {
 	UserService    *service.UserService
 	GroupService   *service.GroupService
 	MessageService *service.MessageService
+	ConvService    *service.ConversationService
 }

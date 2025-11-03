@@ -11,6 +11,7 @@ import (
 type (
 	YamlConfig struct {
 		AppName     string            `yaml:"AppName"`
+		SeverID     string            `yaml:"ServerID"`
 		PostgresSQL PostgresSQLConfig `yaml:"PostgresSQL"`
 		Log         LogConfig         `yaml:"Log"`
 		JwtSecret   JwtSecretConfig   `yaml:"JwtSecret"`

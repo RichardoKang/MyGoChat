@@ -2,6 +2,7 @@ package socket
 
 import (
 	pb "MyGoChat/api/v1"
+	"MyGoChat/internal/logic/data"
 	"MyGoChat/internal/logic/service"
 	"MyGoChat/pkg/config"
 	myKafka "MyGoChat/pkg/kafka"
@@ -10,6 +11,7 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/segmentio/kafka-go"
 	"google.golang.org/protobuf/proto"
 )
@@ -26,9 +28,10 @@ type Hub struct {
 	ctx             context.Context
 	cancel          context.CancelFunc
 	GroupService    *service.GroupService // 注入 GroupService
+	redis           *redis.Client
 }
 
-func NewHub(producer *myKafka.Producer, groupService *service.GroupService) *Hub {
+func NewHub(producer *myKafka.Producer, groupService *service.GroupService, data *data.Data) *Hub {
 	ctx, cancel := context.WithCancel(context.Background())
 	cfg := config.GetConfig()
 	// 初始化私聊和群聊的消费者
@@ -45,6 +48,7 @@ func NewHub(producer *myKafka.Producer, groupService *service.GroupService) *Hub
 		ctx:             ctx,
 		cancel:          cancel,
 		GroupService:    groupService, // 赋值
+		redis:           data.GetRedisClient(),
 	}
 }
 
@@ -125,7 +129,7 @@ func (h *Hub) dispatchGroupMessage(kafkaMsg kafka.Message) {
 
 func (h *Hub) Run() {
 	log.Logger.Info("WebSocket Hub started")
-
+	severID := config.GetConfig().SeverID
 	// 启动私聊和群聊的消费者
 	go myKafka.StartConsumer(h.ctx, h.PrivateConsumer, h.dispatchPrivateMessage)
 	go myKafka.StartConsumer(h.ctx, h.GroupConsumer, h.dispatchGroupMessage)
@@ -134,7 +138,15 @@ func (h *Hub) Run() {
 		select {
 		case client := <-h.register: // 新客户端注册
 			h.mu.Lock()
-			h.clients[client.userID] = client // 将客户端添加到活跃客户端列表
+			// 将客户端添加到活跃客户端列表
+			h.clients[client.userID] = client
+			// 将用户标记为在线
+			err := h.redis.HSet(h.ctx, "online_users", strconv.Itoa(int(client.userID)), severID).Err()
+			if err != nil {
+				log.Logger.Sugar().Errorf("Error setting online user in Redis: %v", err)
+			} else {
+				log.Logger.Sugar().Infof("User %d marked as online on server %s", client.userID, severID)
+			}
 			h.mu.Unlock()
 			log.Logger.Sugar().Infof("Client connected: %d", client.userID)
 		case client := <-h.unregister:
@@ -143,6 +155,12 @@ func (h *Hub) Run() {
 				delete(h.clients, client.userID)
 				close(client.send)
 				log.Logger.Sugar().Infof("Client disconnected: %d", client.userID)
+			}
+			err := h.redis.HDel(h.ctx, "online_users", strconv.Itoa(int(client.userID))).Err()
+			if err != nil {
+				log.Logger.Sugar().Errorf("Error removing online user from Redis: %v", err)
+			} else {
+				log.Logger.Sugar().Infof("User %d marked as offline", client.userID)
 			}
 			h.mu.Unlock()
 		}

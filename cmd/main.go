@@ -17,25 +17,28 @@ func main() {
 	log.Logger.Info("start server", log.String("start", "start web sever..."))
 
 	// Init Data
-	data, cleanup, err := data.NewData(config.GetConfig())
+	dataObj, cleanup, err := data.NewData(config.GetConfig())
 	if err != nil {
 		panic(err)
 	}
 	defer cleanup()
 
+	convRepo := data.NewConversationRepo(dataObj)
+
 	// Init Services
-	userService := service.NewUserService(data)
-	groupService := service.NewGroupService(data)
-	messageService := service.NewMessageService(data)
+	userService := service.NewUserService(dataObj)
+	groupService := service.NewGroupService(dataObj)
+	messageService := service.NewMessageService(dataObj)
+	convService := service.NewConversationService(convRepo)
 
 	kafkaProducer := myKafka.InitProducer()
 	defer kafkaProducer.CloseProducer()
 
-	hub := socket.NewHub(kafkaProducer, groupService)
+	hub := socket.NewHub(kafkaProducer, groupService, dataObj)
 	go hub.Run()
 	defer hub.Stop()
 
-	newRouter := server.NewRouter(hub, userService, groupService, messageService)
+	newRouter := server.NewRouter(hub, userService, groupService, messageService, convService)
 
 	s := &http.Server{
 		Addr:           ":8080",

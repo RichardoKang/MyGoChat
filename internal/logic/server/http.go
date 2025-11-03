@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func NewRouter(hub *socket.Hub, userService *service.UserService, groupService *service.GroupService, messageService *service.MessageService) *gin.Engine {
+func NewRouter(hub *socket.Hub, userService *service.UserService, groupService *service.GroupService, messageService *service.MessageService, convService *service.ConversationService) *gin.Engine {
 	gin.SetMode(gin.DebugMode)
 
 	r := gin.Default()
@@ -20,6 +20,7 @@ func NewRouter(hub *socket.Hub, userService *service.UserService, groupService *
 		UserService:    userService,
 		GroupService:   groupService,
 		MessageService: messageService,
+		ConvService:    convService,
 	}
 
 	// CORS Middleware

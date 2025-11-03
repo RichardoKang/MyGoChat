@@ -4,6 +4,7 @@ import (
 	pb "MyGoChat/api/v1"
 	"MyGoChat/pkg/config"
 	"MyGoChat/pkg/log"
+	"strconv"
 
 	"github.com/gorilla/websocket"
 	"google.golang.org/protobuf/proto"
@@ -38,7 +39,7 @@ func (c *Client) readPump() {
 			continue
 		}
 		// 防止用户伪造发送者ID
-		msg.SenderID = uint32(c.userID)
+		msg.SenderID = strconv.Itoa(int(uint32(c.userID)))
 
 		producer := c.hub.Producer
 		msgType := msg.MessageType

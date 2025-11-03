@@ -9,6 +9,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
 )
 
@@ -144,4 +145,16 @@ func (s *UserService) GetUserByID(id uint) (*model.User, error) {
 		return nil, res.Error
 	}
 	return &user, nil
+}
+
+func (s *UserService) GetUserStatus(userID uint) (severID string, isOnline bool, err error) {
+	rdb := s.data.GetRedisClient()
+	severID, err = rdb.HGet(rdb.Context(), "user_status", string(rune(userID))).Result()
+	if err == nil {
+		if errors.Is(err, redis.Nil) {
+			return "", false, err
+		}
+		return "", false, err
+	}
+	return severID, true, nil
 }
