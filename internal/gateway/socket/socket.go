@@ -21,12 +21,13 @@ var upgrader = websocket.Upgrader{
 
 // ServeWs 处理来自 gin 上下文的 WebSocket 请求。
 func ServeWs(hub *Hub, c *gin.Context) {
-	userUUID, exists := c.Get("uuid")
+	userUUID, exists := c.Get("userUUID")
 	if !exists {
 		log.Logger.Error("User ID not found in context")
 		return
 	}
 
+	uuid, ok := userUUID.(string)
 	if !ok {
 		log.Logger.Error("User ID in context is not of type uint")
 		return
@@ -38,8 +39,11 @@ func ServeWs(hub *Hub, c *gin.Context) {
 		return
 	}
 
-	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256), userUUID: uid}
+	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256), userUUID: uuid}
 	hub.register <- client
+
+	// 用户上线，发送离线消息同步请求到 Logic 服务
+	hub.requestOfflineMessageSync(uuid)
 
 	go client.writePump()
 	go client.readPump()

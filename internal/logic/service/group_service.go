@@ -13,95 +13,85 @@ import (
 )
 
 type GroupService struct {
-	data *data.Data
+	repo     data.IGroupRepo
+	userRepo data.IUserRepo
 }
 
-func NewGroupService(data *data.Data) *GroupService {
-	return &GroupService{data: data}
+func NewGroupService(repo data.IGroupRepo, userRepo data.IUserRepo) *GroupService {
+	return &GroupService{repo: repo, userRepo: userRepo}
 }
 
 func (s *GroupService) CreateGroup(group *model.Group, adminUserUuid string) error {
 	logger := log.Logger
-	d := s.data.GetDB()
 
-	// 确保表存在
-	if err := d.AutoMigrate(&model.Group{}, &model.GroupMember{}); err != nil {
-		logger.Error("CreateGroup: failed to migrate tables")
-		return err
-	}
-
-	var adminUser model.User
-	result := d.Find(&adminUser, "uuid = ?", adminUserUuid)
-	if result.Error != nil {
+	adminUser, err := s.userRepo.GetUserByUuid(adminUserUuid)
+	if err != nil {
 		logger.Error("CreateGroup: admin user not found")
-		return result.Error
+		return err
 	}
 
 	group.Uuid = uuid.New().String()
 	// 生成一个唯一的6位群号
-	for {
-		group.GroupNumber = fmt.Sprintf("%06v", rand.New(rand.NewSource(time.Now().UnixNano())).Int31n(1000000))
-		var existingGroup model.Group
-		if err := d.Where("group_number = ?", group.GroupNumber).First(&existingGroup).Error; err != nil {
-			break // 未找到重复的群号，跳出循环
+	maxAttempts := 100 // 防止无限循环，最多尝试100次
+	var attempts int
+	for attempts = 0; attempts < maxAttempts; attempts++ {
+		group.GroupNumber = fmt.Sprintf("%06d", rand.New(rand.NewSource(time.Now().UnixNano())).Int31n(1000000))
+		_, err := s.repo.GetGroupByGroupNumber(group.GroupNumber)
+		if err != nil {
+			// 找不到记录说明群号可用，跳出循环
+			logger.Debug("Generated unique group number",
+				log.String("groupNumber", group.GroupNumber),
+				log.Int("attempts", attempts+1))
+			break
 		}
+		// 找到了记录说明群号已存在，继续生成新的群号
+		logger.Debug("Group number already exists, generating new one",
+			log.String("groupNumber", group.GroupNumber),
+			log.Int("attempt", attempts+1))
 	}
-	group.AdminUserID = adminUser.ID
-	group.CreatedAt = time.Now()
-	d.Save(&group)
 
-	groupMember := model.GroupMember{
-		UserID:   adminUser.ID,
-		GroupID:  group.ID,
-		Nickname: adminUser.Nickname,
-		Mute:     false,
+	if attempts >= maxAttempts {
+		logger.Error("Failed to generate unique group number after max attempts",
+			log.Int("maxAttempts", maxAttempts))
+		return fmt.Errorf("failed to generate unique group number after %d attempts", maxAttempts)
 	}
-	d.Save(&groupMember)
+	group.CreatedAt = time.Now()
+
+	if err := s.repo.CreateGroup(group, adminUser); err != nil {
+		logger.Error("CreateGroup: failed to create group")
+		return err
+	}
 
 	logger.Info("Group created successfully", log.Any("group", group), log.Any("adminUser", adminUser))
 	return nil
-
 }
 
 func (s *GroupService) GetMyGroups(userUuid string) ([]response.GroupResponse, error) {
 	logger := log.Logger
 
-	d := s.data.GetDB()
-
-	var user model.User
-	result := d.Find(&user, "uuid = ?", userUuid)
-	if result.Error != nil {
+	user, err := s.userRepo.GetUserByUuid(userUuid)
+	if err != nil {
 		logger.Error("GetUserGroups: user not found")
-		return []response.GroupResponse{}, result.Error
+		return nil, err
 	}
 
-	var queryGroups []response.GroupResponse
-	// 根据用户ID查询所属群组
-	result = d.Table("groups").
-		Select("groups.uuid,groups.group_number, groups.created_at, groups.name").
-		Joins("join group_members on groups.id = group_members.group_id").
-		Where("group_members.user_id = ?", user.ID).
-		Scan(&queryGroups) //Scan方法将结果映射到切片中
-
-	if result.Error != nil {
+	groups, err := s.repo.GetMyGroups(user.ID)
+	if err != nil {
 		logger.Error("GetUserGroups: failed to get user groups")
-		return []response.GroupResponse{}, result.Error
+		return nil, err
 	}
 
-	logger.Info("GetUserGroups: fetched user groups successfully", log.Any("groups", queryGroups))
-	return queryGroups, nil
-
+	logger.Info("GetUserGroups: fetched user groups successfully", log.Any("groups", groups))
+	return groups, nil
 }
 
 func (s *GroupService) GetGroupByGroupNumber(groupNumber string) (response.GroupResponse, error) {
 	logger := log.Logger
-	d := s.data.GetDB()
 
-	var group model.Group
-	result := d.Find(&group, "group_number = ?", groupNumber)
-	if result.Error != nil {
+	group, err := s.repo.GetGroupByGroupNumber(groupNumber)
+	if err != nil {
 		logger.Error("GetGroupByGroupNumber: group not found")
-		return response.GroupResponse{}, result.Error
+		return response.GroupResponse{}, err
 	}
 
 	groupResponse := response.GroupResponse{
@@ -115,66 +105,77 @@ func (s *GroupService) GetGroupByGroupNumber(groupNumber string) (response.Group
 
 func (s *GroupService) JoinGroup(userUuid string, groupNumber string, nickname string) error {
 	logger := log.Logger
-	d := s.data.GetDB()
 
-	var user model.User
-	result := d.Find(&user, "uuid = ?", userUuid)
-	if result.Error != nil {
+	user, err := s.userRepo.GetUserByUuid(userUuid)
+	if err != nil {
 		logger.Error("JoinGroup: user not found")
-		return result.Error
+		return err
 	}
 
-	var group model.Group
-	result = d.Find(&group, "group_number = ?", groupNumber)
-	if result.Error != nil {
+	group, err := s.repo.GetGroupByGroupNumber(groupNumber)
+	if err != nil {
 		logger.Error("JoinGroup: group not found")
-		return result.Error
+		return err
 	}
 
-	// 检查用户是否已经是群成员
-	var existingMember model.GroupMember
-	result = d.Where("user_id = ? AND group_id = ?", user.ID, group.ID).First(&existingMember)
-	if result.Error == nil {
-		logger.Info("JoinGroup: user is already a member of the group", log.Any("userUuid", userUuid), log.Any("groupNumber", groupNumber))
-		return nil // 用户已经是群成员，直接返回
+	if err := s.repo.JoinGroup(user, group, nickname); err != nil {
+		logger.Error("JoinGroup: failed to join group")
+		return err
 	}
-
-	groupMember := model.GroupMember{
-		UserID:   user.ID,
-		GroupID:  group.ID,
-		Nickname: nickname,
-		Mute:     false,
-	}
-	d.Save(&groupMember)
 
 	logger.Info("JoinGroup: user joined group successfully", log.Any("userUuid", userUuid), log.Any("groupNumber", groupNumber))
 	return nil
 }
 
-func (s *GroupService) GetGroupMembers(GroupNumber string) ([]response.GroupMemberResponse, error) {
+func (s *GroupService) GetGroupMembers(groupId uint) ([]response.GroupMemberResponse, error) {
 	logger := log.Logger
-	d := s.data.GetDB()
 
-	// get group by group number
-	group := model.Group{}
-	result := d.Find(&group, "group_number = ?", GroupNumber)
-	if result.Error != nil {
-		logger.Error("GetGroupMembers: group not found")
-		return []response.GroupMemberResponse{}, result.Error
-	}
-
-	var members []response.GroupMemberResponse
-	result = d.Table("group_members").
-		Select("group_members.user_id, users.username, group_members.nickname, group_members.mute").
-		Joins("join users on group_members.user_id = users.id").
-		Where("group_members.group_id = ?", group.ID).
-		Scan(&members)
-
-	if result.Error != nil {
+	members, err := s.repo.GetGroupMembers(groupId)
+	if err != nil {
 		logger.Error("GetGroupMembers: failed to get group members")
-		return []response.GroupMemberResponse{}, result.Error
+		return nil, err
 	}
 
 	logger.Info("GetGroupMembers: fetched group members successfully", log.Any("members", members))
+	return members, nil
+}
+
+// GetGroupMemberUUIDs 获取群组成员的UUID列表
+func (s *GroupService) GetGroupMemberUUIDs(groupNumber string) ([]string, error) {
+	logger := log.Logger
+
+	uuids, err := s.repo.GetGroupMemberUUIDs(groupNumber)
+	if err != nil {
+		logger.Error("GetGroupMemberUUIDs: failed to get group member UUIDs", log.String("groupNumber", groupNumber))
+		return nil, err
+	}
+
+	logger.Info("GetGroupMemberUUIDs: fetched group member UUIDs successfully",
+		log.String("groupNumber", groupNumber),
+		log.Int("memberCount", len(uuids)))
+	return uuids, nil
+}
+
+// GetGroupMembersByGroupNumber 通过群号获取群成员详细信息
+func (s *GroupService) GetGroupMembersByGroupNumber(groupNumber string) ([]response.GroupMemberResponse, error) {
+	logger := log.Logger
+
+	// 1. 先通过群号获取群组信息
+	group, err := s.repo.GetGroupByGroupNumber(groupNumber)
+	if err != nil {
+		logger.Error("GetGroupMembersByGroupNumber: group not found", log.String("groupNumber", groupNumber))
+		return nil, err
+	}
+
+	// 2. 通过群组ID获取成员列表
+	members, err := s.repo.GetGroupMembers(group.ID)
+	if err != nil {
+		logger.Error("GetGroupMembersByGroupNumber: failed to get group members", log.Any("groupId", group.ID))
+		return nil, err
+	}
+
+	logger.Info("GetGroupMembersByGroupNumber: fetched group members successfully",
+		log.String("groupNumber", groupNumber),
+		log.Int("memberCount", len(members)))
 	return members, nil
 }

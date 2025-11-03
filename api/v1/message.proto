@@ -9,7 +9,7 @@ message Message {
   string id = 1;                // 消息唯一ID (MongoDB ObjectID)
   string conversationID = 2;   // 会话ID (MongoDB ObjectID)
   string senderUUID = 3;         // 发送消息用户UUID
-  int64 timestamp = 4;          // 消息发送时间
+  int64 sendAt = 4;          // 消息发送时间
   int32 contentType = 5;       // 1=text, 2=image, 3=file, 4=voice
   google.protobuf.Any body = 6; // 消息内容
   MessageMetadata metadata = 7; // 元数据
@@ -19,6 +19,7 @@ message Message {
   string senderName = 9;      // 发送消息用户的用户名
   string avatar = 10;           // 头像
   int32 messageType = 11;      // 消息类型，1.单聊 2.群聊
+  string recipientUUID = 12;    // 接收消息用户UUID
 }
 
 // TextBody is used for text messages, and it's packed into the 'body' field of the Message.

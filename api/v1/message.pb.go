@@ -27,16 +27,17 @@ type Message struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Id             string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                                // 消息唯一ID (MongoDB ObjectID)
 	ConversationID string                 `protobuf:"bytes,2,opt,name=conversationID,proto3" json:"conversationID,omitempty"`        // 会话ID (MongoDB ObjectID)
-	SenderUUID     string                 `protobuf:"bytes,3,opt,name=senderID,proto3" json:"senderUUID,omitempty"`                  // 发送消息用户ID
-	Timestamp      int64                  `protobuf:"varint,4,opt,name=timestamp,proto3" json:"timestamp,omitempty"`                 // 消息发送时间
+	SenderUUID     string                 `protobuf:"bytes,3,opt,name=senderUUID,proto3" json:"senderUUID,omitempty"`                // 发送消息用户UUID
+	SendAt         int64                  `protobuf:"varint,4,opt,name=sendAt,proto3" json:"sendAt,omitempty"`                       // 消息发送时间
 	ContentType    int32                  `protobuf:"varint,5,opt,name=contentType,proto3" json:"contentType,omitempty"`             // 1=text, 2=image, 3=file, 4=voice
 	Body           *anypb.Any             `protobuf:"bytes,6,opt,name=body,proto3" json:"body,omitempty"`                            // 消息内容
 	Metadata       *MessageMetadata       `protobuf:"bytes,7,opt,name=metadata,proto3" json:"metadata,omitempty"`                    // 元数据
 	DeletedAt      *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=deleted_at,json=deletedAt,proto3" json:"deleted_at,omitempty"` // 删除时间
 	// The following fields are for client display purposes and are not stored in the database.
-	SenderName    string `protobuf:"bytes,9,opt,name=senderName,proto3" json:"senderName,omitempty"`     // 发送消息用户的用户名
-	Avatar        string `protobuf:"bytes,10,opt,name=avatar,proto3" json:"avatar,omitempty"`            // 头像
-	MessageType   int32  `protobuf:"varint,11,opt,name=messageType,proto3" json:"messageType,omitempty"` // 消息类型，1.单聊 2.群聊
+	SenderName    string `protobuf:"bytes,9,opt,name=senderName,proto3" json:"senderName,omitempty"`        // 发送消息用户的用户名
+	Avatar        string `protobuf:"bytes,10,opt,name=avatar,proto3" json:"avatar,omitempty"`               // 头像
+	MessageType   int32  `protobuf:"varint,11,opt,name=messageType,proto3" json:"messageType,omitempty"`    // 消息类型，1.单聊 2.群聊
+	RecipientUUID string `protobuf:"bytes,12,opt,name=recipientUUID,proto3" json:"recipientUUID,omitempty"` // 接收消息用户UUID
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -92,9 +93,9 @@ func (x *Message) GetSenderUUID() string {
 	return ""
 }
 
-func (x *Message) GetTimestamp() int64 {
+func (x *Message) GetSendAt() int64 {
 	if x != nil {
-		return x.Timestamp
+		return x.SendAt
 	}
 	return 0
 }
@@ -146,6 +147,13 @@ func (x *Message) GetMessageType() int32 {
 		return x.MessageType
 	}
 	return 0
+}
+
+func (x *Message) GetRecipientUUID() string {
+	if x != nil {
+		return x.RecipientUUID
+	}
+	return ""
 }
 
 // TextBody is used for text messages, and it's packed into the 'body' field of the Message.
@@ -311,12 +319,14 @@ var File_api_v1_message_proto protoreflect.FileDescriptor
 
 const file_api_v1_message_proto_rawDesc = "" +
 	"\n" +
-	"\x14api/v1/message.proto\x12\x02v1\x1a\x19google/protobuf/any.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x8d\x03\n" +
+	"\x14api/v1/message.proto\x12\x02v1\x1a\x19google/protobuf/any.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xb1\x03\n" +
 	"\aMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12&\n" +
-	"\x0econversationID\x18\x02 \x01(\tR\x0econversationID\x12\x1a\n" +
-	"\bsenderID\x18\x03 \x01(\tR\bsenderID\x12\x1c\n" +
-	"\ttimestamp\x18\x04 \x01(\x03R\ttimestamp\x12 \n" +
+	"\x0econversationID\x18\x02 \x01(\tR\x0econversationID\x12\x1e\n" +
+	"\n" +
+	"senderUUID\x18\x03 \x01(\tR\n" +
+	"senderUUID\x12\x16\n" +
+	"\x06sendAt\x18\x04 \x01(\x03R\x06sendAt\x12 \n" +
 	"\vcontentType\x18\x05 \x01(\x05R\vcontentType\x12(\n" +
 	"\x04body\x18\x06 \x01(\v2\x14.google.protobuf.AnyR\x04body\x12/\n" +
 	"\bmetadata\x18\a \x01(\v2\x13.v1.MessageMetadataR\bmetadata\x129\n" +
@@ -327,7 +337,8 @@ const file_api_v1_message_proto_rawDesc = "" +
 	"senderName\x12\x16\n" +
 	"\x06avatar\x18\n" +
 	" \x01(\tR\x06avatar\x12 \n" +
-	"\vmessageType\x18\v \x01(\x05R\vmessageType\"$\n" +
+	"\vmessageType\x18\v \x01(\x05R\vmessageType\x12$\n" +
+	"\rrecipientUUID\x18\f \x01(\tR\rrecipientUUID\"$\n" +
 	"\bTextBody\x12\x18\n" +
 	"\acontent\x18\x01 \x01(\tR\acontent\"n\n" +
 	"\x0eFileAttachment\x12\x10\n" +

@@ -5,6 +5,7 @@ import (
 	"MyGoChat/pkg/log"
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/go-redis/redis/v8"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -15,40 +16,76 @@ import (
 )
 
 type Data struct {
-	mdb *mongo.Database
-	rdb *redis.Client
-	db  *gorm.DB
+	Mdb          *mongo.Database
+	Rdb          *redis.Client
+	RedisManager *RedisManager // 新增：Redis 管理器
+	Db           *gorm.DB
 }
 
 func NewData(cfg config.YamlConfig) (*Data, func(), error) {
+	rdb := initRedisDB(cfg)
 
 	data := &Data{
-		mdb: initMongoDB(cfg),
-		rdb: initRedisDB(cfg),
-		db:  initPostgresDB(cfg),
+		Mdb:          initMongoDB(cfg),
+		Rdb:          rdb,
+		RedisManager: NewRedisManager(rdb),
+		Db:           initPostgresDB(cfg),
 	}
+
+	// 启动 Redis 健康检查 (每5分钟检查一次)
+	data.RedisManager.StartPeriodicHealthCheck(5 * time.Minute)
 
 	log.Logger.Sugar().Infof("init data success")
 	cleanup := func() {
-		sqlDB, _ := data.db.DB()
-		sqlDB.Close()
-		data.mdb.Client().Disconnect(context.Background())
+		log.Logger.Sugar().Info("Cleaning up data connections...")
 
-		// 这里可以添加关闭MongoDB连接的逻辑
+		// 关闭 PostgreSQL 连接
+		if sqlDB, err := data.Db.DB(); err == nil {
+			if err := sqlDB.Close(); err != nil {
+				log.Logger.Sugar().Errorf("Failed to close PostgreSQL connection: %v", err)
+			} else {
+				log.Logger.Sugar().Info("PostgreSQL connection closed")
+			}
+		}
+
+		// 关闭 MongoDB 连接
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := data.Mdb.Client().Disconnect(ctx); err != nil {
+			log.Logger.Sugar().Errorf("Failed to close MongoDB connection: %v", err)
+		} else {
+			log.Logger.Sugar().Info("MongoDB connection closed")
+		}
+
+		// 关闭 Redis 连接
+		if data.RedisManager != nil {
+			if err := data.RedisManager.Close(); err != nil {
+				log.Logger.Sugar().Errorf("Failed to close Redis connection: %v", err)
+			} else {
+				log.Logger.Sugar().Info("Redis connection closed")
+			}
+		}
+
+		log.Logger.Sugar().Info("All data connections cleaned up")
 	}
 	return data, cleanup, nil
 }
 
 func (d *Data) GetDB() *gorm.DB {
-	return d.db
+	return d.Db
 }
 
 func (d *Data) GetMongoDB() *mongo.Database {
-	return d.mdb
+	return d.Mdb
 }
 
 func (d *Data) GetRedisClient() *redis.Client {
-	return d.rdb
+	return d.Rdb
+}
+
+// GetRedisManager 获取 Redis 管理器 - 推荐使用这个方法
+func (d *Data) GetRedisManager() *RedisManager {
+	return d.RedisManager
 }
 
 func initPostgresDB(cfg config.YamlConfig) *gorm.DB {
@@ -85,16 +122,11 @@ func initMongoDB(cfg config.YamlConfig) *mongo.Database {
 }
 
 func initRedisDB(cfg config.YamlConfig) *redis.Client {
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     cfg.Redis.Addr,
-		Password: cfg.Redis.Password,
-		DB:       cfg.Redis.DB,
-	})
-
-	if _, err := rdb.Ping(context.Background()).Result(); err != nil {
+	// 使用优化后的 Redis 客户端创建方法
+	rdb, err := NewRedisClient(cfg)
+	if err != nil {
 		panic("连接Redis失败, error=" + err.Error())
 	}
-
 	return rdb
 }
 

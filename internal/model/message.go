@@ -9,8 +9,8 @@ import (
 type Message struct {
 	ID             primitive.ObjectID `bson:"_id,omitempty"`
 	ConversationID primitive.ObjectID `bson:"conversationID"` // 索引: 属于哪个会话
-	SenderID       string             `bson:"senderID"`       // 索引: 谁发的 (用户的 UUID string)
-	Timestamp      int64              `bson:"timestamp"`      // 索引: 消息发送时间
+	SenderUUID     string             `bson:"senderUUID"`     // 索引: 谁发的 (用户的 UUID string)
+	SendAt         int64              `bson:"sendAt"`         // 索引: 消息发送时间
 	ContentType    int16              `bson:"contentType"`    // 1=text, 2=image, 3=file, 4=voice
 	Body           any                `bson:"body"`           // ContentType=1: "Hello" (string)， ContentType=2/3/...: FileAttachment 结构体
 	Metadata       *MessageMetadata   `bson:"metadata,omitempty"`

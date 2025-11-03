@@ -23,13 +23,16 @@ func main() {
 	}
 	defer cleanup()
 
+	userRepo := data.NewUserRepo(dataObj)
+	groupRepo := data.NewGroupRepo(dataObj)
 	convRepo := data.NewConversationRepo(dataObj)
 	msgRepo := data.NewMessageRepo(dataObj)
 
 	// Init Services
-	userService := service.NewUserService(dataObj)
-	groupService := service.NewGroupService(dataObj)
-	messageService := service.NewMessageService(msgRepo, convRepo, dataObj.GetRedisClient(), mq.InitProducer())
+	userService := service.NewUserService(userRepo, dataObj.GetRedisClient())
+	groupService := service.NewGroupService(groupRepo, userRepo)
+	// 使用 RedisManager 提供更强大的 Redis 操作
+	messageService := service.NewMessageService(msgRepo, convRepo, groupRepo, dataObj.GetRedisClient(), mq.InitProducer())
 	convService := service.NewConversationService(convRepo)
 
 	kafkaProducer := mq.InitProducer()
@@ -38,9 +41,14 @@ func main() {
 	cfg := config.GetConfig()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	consumer := mq.InitConsumer(cfg.Kafka.Topics.Ingest, "logic_service_group")
 
+	// 消息处理消费者
+	consumer := mq.InitConsumer(cfg.Kafka.Topics.Ingest, "logic_service_group")
 	go mq.StartConsumer(ctx, consumer, messageService.ProcessMessage)
+
+	// 同步请求消费者
+	syncConsumer := mq.InitConsumer("im_sync_request", "logic_sync_group")
+	go mq.StartConsumer(ctx, syncConsumer, messageService.ProcessSyncRequest)
 
 	newRouter := server.NewRouter(userService, groupService, messageService, convService)
 

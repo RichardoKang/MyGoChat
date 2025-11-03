@@ -85,7 +85,8 @@ func (h *Handler) GetGroupMembers(c *gin.Context) {
 		return
 	}
 
-	members, err := h.GroupService.GetGroupMembers(req.GroupNumber)
+	// 使用通过群号获取群成员的方法
+	members, err := h.GroupService.GetGroupMembersByGroupNumber(req.GroupNumber)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, response.FailMsg(err.Error()))
 		return
