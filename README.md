@@ -26,7 +26,7 @@
 - 容器化：Docker
 
 ## 项目结构
-````
+```
 MyGoChat/
 ├── api/
 │   └── v1/
@@ -93,7 +93,9 @@ MyGoChat/
 │   └── logger_test.go
 └── token/
 └── token.go
-```
+
+
+
 ## 快速开始
 
 ### 1. 环境准备
