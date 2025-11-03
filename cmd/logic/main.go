@@ -1,12 +1,10 @@
-package main
+package logic
 
 import (
-	"MyGoChat/internal/gateway/socket"
 	"MyGoChat/internal/logic/data"
 	"MyGoChat/internal/logic/server"
 	"MyGoChat/internal/logic/service"
 	"MyGoChat/pkg/config"
-	myKafka "MyGoChat/pkg/kafka"
 	"MyGoChat/pkg/log"
 	"net/http"
 	"time"
@@ -14,7 +12,7 @@ import (
 
 func main() {
 	log.InitLogger(config.GetConfig().Log.Path, config.GetConfig().Log.Level)
-	log.Logger.Info("start server", log.String("start", "start web sever..."))
+	log.Logger.Info("start server", log.String("start", "start web server..."))
 
 	// Init Data
 	dataObj, cleanup, err := data.NewData(config.GetConfig())
@@ -31,14 +29,7 @@ func main() {
 	messageService := service.NewMessageService(dataObj)
 	convService := service.NewConversationService(convRepo)
 
-	kafkaProducer := myKafka.InitProducer()
-	defer kafkaProducer.CloseProducer()
-
-	hub := socket.NewHub(kafkaProducer, groupService, dataObj)
-	go hub.Run()
-	defer hub.Stop()
-
-	newRouter := server.NewRouter(hub, userService, groupService, messageService, convService)
+	newRouter := server.NewRouter(userService, groupService, messageService, convService)
 
 	s := &http.Server{
 		Addr:           ":8080",

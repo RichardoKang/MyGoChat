@@ -1,7 +1,6 @@
 package server
 
 import (
-	"MyGoChat/internal/gateway/socket"
 	"MyGoChat/internal/logic/handler"
 	"MyGoChat/internal/logic/middleware"
 	"MyGoChat/internal/logic/service"
@@ -10,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func NewRouter(hub *socket.Hub, userService *service.UserService, groupService *service.GroupService, messageService *service.MessageService, convService *service.ConversationService) *gin.Engine {
+func NewRouter(userService *service.UserService, groupService *service.GroupService, messageService *service.MessageService, convService *service.ConversationService) *gin.Engine {
 	gin.SetMode(gin.DebugMode)
 
 	r := gin.Default()
@@ -26,9 +25,9 @@ func NewRouter(hub *socket.Hub, userService *service.UserService, groupService *
 	// CORS Middleware
 	r.Use(middleware.CORSMiddleware())
 
-	r.GET("/ws", middleware.JWTAuthMiddleware(h.UserService), func(c *gin.Context) {
-		socket.ServeWs(hub, c)
-	})
+	//r.GET("/ws", middleware.JWTAuthMiddleware(h.UserService), func(c *gin.Context) {
+	//	socket.ServeWs(hub, c)
+	//})
 
 	// hostname/api
 	api := r.Group("/api")
