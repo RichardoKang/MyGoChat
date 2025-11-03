@@ -27,7 +27,7 @@ type Message struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Id             string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                                // 消息唯一ID (MongoDB ObjectID)
 	ConversationID string                 `protobuf:"bytes,2,opt,name=conversationID,proto3" json:"conversationID,omitempty"`        // 会话ID (MongoDB ObjectID)
-	SenderID       string                 `protobuf:"bytes,3,opt,name=senderID,proto3" json:"senderID,omitempty"`                    // 发送消息用户ID
+	SenderUUID     string                 `protobuf:"bytes,3,opt,name=senderID,proto3" json:"senderUUID,omitempty"`                  // 发送消息用户ID
 	Timestamp      int64                  `protobuf:"varint,4,opt,name=timestamp,proto3" json:"timestamp,omitempty"`                 // 消息发送时间
 	ContentType    int32                  `protobuf:"varint,5,opt,name=contentType,proto3" json:"contentType,omitempty"`             // 1=text, 2=image, 3=file, 4=voice
 	Body           *anypb.Any             `protobuf:"bytes,6,opt,name=body,proto3" json:"body,omitempty"`                            // 消息内容
@@ -85,9 +85,9 @@ func (x *Message) GetConversationID() string {
 	return ""
 }
 
-func (x *Message) GetSenderID() string {
+func (x *Message) GetSenderUUID() string {
 	if x != nil {
-		return x.SenderID
+		return x.SenderUUID
 	}
 	return ""
 }

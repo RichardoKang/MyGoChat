@@ -21,13 +21,12 @@ var upgrader = websocket.Upgrader{
 
 // ServeWs 处理来自 gin 上下文的 WebSocket 请求。
 func ServeWs(hub *Hub, c *gin.Context) {
-	userID, exists := c.Get("userID")
+	userUUID, exists := c.Get("uuid")
 	if !exists {
 		log.Logger.Error("User ID not found in context")
 		return
 	}
 
-	uid, ok := userID.(uint)
 	if !ok {
 		log.Logger.Error("User ID in context is not of type uint")
 		return
@@ -39,7 +38,7 @@ func ServeWs(hub *Hub, c *gin.Context) {
 		return
 	}
 
-	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256), userID: uid}
+	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256), userUUID: uid}
 	hub.register <- client
 
 	go client.writePump()

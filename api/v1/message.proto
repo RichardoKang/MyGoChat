@@ -8,7 +8,7 @@ import "google/protobuf/timestamp.proto";
 message Message {
   string id = 1;                // 消息唯一ID (MongoDB ObjectID)
   string conversationID = 2;   // 会话ID (MongoDB ObjectID)
-  string senderID = 3;         // 发送消息用户ID
+  string senderUUID = 3;         // 发送消息用户UUID
   int64 timestamp = 4;          // 消息发送时间
   int32 contentType = 5;       // 1=text, 2=image, 3=file, 4=voice
   google.protobuf.Any body = 6; // 消息内容

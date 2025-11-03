@@ -1,55 +1,49 @@
-// cmd/gateway/main.go
 package main
 
 import (
-	gwServer "MyGoChat/internal/gateway/server" // 导入我们新创建的 gateway 路由
+	gwServer "MyGoChat/internal/gateway/server"
 	"MyGoChat/internal/gateway/socket"
-	"MyGoChat/internal/logic/data"    // <-- 临时依赖
-	"MyGoChat/internal/logic/service" // <-- 临时依赖
-	"MyGoChat/pkg/config"
 	myKafka "MyGoChat/pkg/kafka"
 	"MyGoChat/pkg/log"
+	"context"
 	"net/http"
-	"time"
+	"os"
 )
 
 func main() {
-	log.InitLogger(config.GetConfig().Log.Path, config.GetConfig().Log.Level)
-	log.Logger.Info("start GATEWAY server", log.String("start", "start gateway server..."))
 
-	// --- 临时的依赖 ---
-	// hub.go 目前仍然直接依赖 logic 的 service 和 data
-	// 这是我们下一步要修复的，但为了启动，我们先初始化它们
-	dataObj, cleanup, err := data.NewData(config.GetConfig())
-	if err != nil {
-		panic(err)
+	// 【重要】网关必须知道自己的 ID
+	gatewayID := os.Getenv("GATEWAY_ID")
+	if gatewayID == "" {
+		gatewayID = "gateway-default" // 本地测试用
+		log.Logger.Warn("GATEWAY_ID not set, using default")
 	}
-	defer cleanup()
-	groupService := service.NewGroupService(dataObj)
-	userService := service.NewUserService(dataObj)
 
-	// Init Kafka Producer
 	kafkaProducer := myKafka.InitProducer()
 	defer kafkaProducer.CloseProducer()
 
-	// Init Hub (注意，我们传入了临时的依赖)
-	hub := socket.NewHub(kafkaProducer, groupService, dataObj)
+	hub := socket.NewHub(kafkaProducer)
 	go hub.Run()
 	defer hub.Stop()
 
-	// Init Router (使用我们新创建的 gateway 专用 Router)
-	newRouter := gwServer.NewGatewayRouter(hub, userService)
+	// 【新增】启动 Gateway 自己的消费者
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	// Start HTTP Server
+	deliveryTopic := "im_delivery_" + gatewayID
+	consumer := myKafka.InitConsumer(deliveryTopic, deliveryTopic)
+
+	// 【关键】: 将 hub.DispatchMessage 作为处理器
+	go myKafka.StartConsumer(ctx, consumer, hub.DispatchMessage)
+
+	newRouter := gwServer.NewGatewayRouter(hub) // userService 仍用于 JWT
+
 	s := &http.Server{
-		Addr:           ":8081", // Gateway 服务运行在 8081 (避免端口冲突)
-		Handler:        newRouter,
-		ReadTimeout:    10 * time.Second,
-		WriteTimeout:   10 * time.Second,
-		MaxHeaderBytes: 1 << 20,
+		Addr:    ":8081", // Gateway 运行在 8081
+		Handler: newRouter,
 	}
-	err = s.ListenAndServe()
-	if nil != err {
-		log.Logger.Error("server error", log.Any("serverError", err))
+	err := s.ListenAndServe()
+	if err != nil {
+		log.Logger.Error("Gateway server error", log.Any("serverError", err))
 	}
 }

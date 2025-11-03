@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"MyGoChat/internal/logic/service"
 	"MyGoChat/pkg/common/response"
 	"MyGoChat/pkg/token"
 	"net/http"
@@ -11,7 +10,7 @@ import (
 
 // JWTAuthMiddleware creates a middleware function that validates JWT tokens.
 // It takes a UserService to verify the user exists.
-func JWTAuthMiddleware(userService *service.UserService) gin.HandlerFunc {
+func JWTAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 检查token
 		tokenString := c.GetHeader("Authorization")
@@ -36,15 +35,7 @@ func JWTAuthMiddleware(userService *service.UserService) gin.HandlerFunc {
 			return
 		}
 
-		user, err := userService.GetUserByUuid(claims.UserUuid)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, response.FailMsg("Invalid user"))
-			c.Abort()
-			return
-		}
-
-		c.Set("userID", user.ID)
-		c.Set("useruuid", claims.UserUuid)
+		c.Set("userUUID", claims.UserUuid)
 		c.Set("username", claims.Username)
 		c.Next()
 	}

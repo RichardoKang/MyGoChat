@@ -4,7 +4,6 @@ import (
 	pb "MyGoChat/api/v1"
 	"MyGoChat/pkg/config"
 	"MyGoChat/pkg/log"
-	"strconv"
 
 	"github.com/gorilla/websocket"
 	"google.golang.org/protobuf/proto"
@@ -12,10 +11,10 @@ import (
 
 // Client 是一个中间人，代表一个连接到服务器的用户。
 type Client struct {
-	hub    *Hub
-	conn   *websocket.Conn // 与客户端的 WebSocket 连接
-	send   chan []byte
-	userID uint
+	hub      *Hub
+	conn     *websocket.Conn // 与客户端的 WebSocket 连接
+	send     chan []byte
+	userUUID string
 }
 
 // readPump 从 WebSocket 连接中读取消息并将其发送到Hub的kafka producer.
@@ -24,25 +23,22 @@ func (c *Client) readPump() {
 		c.hub.unregister <- c
 		c.conn.Close()
 	}()
+
+	ingestTopic := config.GetConfig().Kafka.Topics.Ingest
+
 	for {
 		_, messageBytes, err := c.conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Logger.Sugar().Errorf("WebSocket read error: %v", err)
-			}
+			log.Logger.Sugar().Errorf("Error reading message: %v", err)
 			break
 		}
 		msg := &pb.Message{}
-		// 反序列化消息，把消息放入结构体中
 		if err := proto.Unmarshal(messageBytes, msg); err != nil {
 			log.Logger.Sugar().Errorf("Error unmarshalling message: %v", err)
 			continue
 		}
-		// 防止用户伪造发送者ID
-		msg.SenderID = strconv.Itoa(int(uint32(c.userID)))
 
-		producer := c.hub.Producer
-		msgType := msg.MessageType
+		msg.SenderUUID = c.userUUID
 
 		//c.hub.broadcast <- msg // 发送到Hub的广播通道，现在改为发送到Kafka producer
 
@@ -52,19 +48,11 @@ func (c *Client) readPump() {
 			continue
 		}
 
-		var topic string
-		switch msgType {
-		case 1: // 私聊消息
-			topic = config.GetConfig().Kafka.Topics.Private
-		case 2: // 群聊消息
-			topic = config.GetConfig().Kafka.Topics.Group
-		default:
-			topic = "UnknownTopic"
-			log.Logger.Sugar().Warnf("Unknown message type: %v", msgType)
+		producer := c.hub.Producer
+		err = producer.SendMessage(ingestTopic, serializedMsg)
+		if err != nil {
+			return
 		}
-
-		producer.SendMessage(topic, serializedMsg)
-
 	}
 }
 

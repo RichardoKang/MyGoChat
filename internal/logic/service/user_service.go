@@ -46,7 +46,9 @@ func (s *UserService) Register(user *model.User) (string, error) {
 	}
 
 	user.Password = hashedPassword
-	user.Uuid = uuid.New().String()
+
+	// 固定uuid为5位字符
+	user.Uuid = uuid.New().String()[:5]
 	user.CreateAt = time.Now()
 
 	if res := d.Create(user); res.Error != nil {
@@ -147,9 +149,9 @@ func (s *UserService) GetUserByID(id uint) (*model.User, error) {
 	return &user, nil
 }
 
-func (s *UserService) GetUserStatus(userID uint) (severID string, isOnline bool, err error) {
+func (s *UserService) GetUserStatus(userUUID string) (severID string, isOnline bool, err error) {
 	rdb := s.data.GetRedisClient()
-	severID, err = rdb.HGet(rdb.Context(), "user_status", string(rune(userID))).Result()
+	severID, err = rdb.HGet(rdb.Context(), "user_status", userUUID).Result()
 	if err == nil {
 		if errors.Is(err, redis.Nil) {
 			return "", false, err

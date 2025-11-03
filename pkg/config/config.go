@@ -45,9 +45,7 @@ type (
 
 	// KafkaTopicsConfig 用于存放所有 Kafka 主题的名称
 	KafkaTopicsConfig struct {
-		Private      string `yaml:"private"`
-		Group        string `yaml:"group"`
-		Notification string `yaml:"notification"`
+		Ingest string `yaml:"ingest"`
 	}
 
 	KafkaConfig struct {
