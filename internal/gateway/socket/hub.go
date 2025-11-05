@@ -2,6 +2,7 @@ package socket
 
 import (
 	pb "MyGoChat/api/v1"
+	"MyGoChat/pkg/config"
 	myKafka "MyGoChat/pkg/kafka"
 	"MyGoChat/pkg/log"
 	"context"
@@ -37,7 +38,7 @@ func NewHub(producer *myKafka.Producer, redisClient *redis.Client, gatewayID str
 	}
 }
 
-// 【新增】DispatchMessage 是 Kafka 处理器
+// DispatchMessage 是 Kafka 处理器
 func (h *Hub) DispatchMessage(kafkaMsg kafka.Message) {
 	var msg pb.Message
 	if err := proto.Unmarshal(kafkaMsg.Value, &msg); err != nil {
@@ -61,10 +62,10 @@ func (h *Hub) DispatchMessage(kafkaMsg kafka.Message) {
 		// 用户在线，直接推送
 		select {
 		case recipientClient.send <- kafkaMsg.Value:
-			log.Logger.Sugar().Debugf("Message delivered to online user: %s", recipientUUID)
+			log.Logger.Sugar().Debugf("Dispatched message to user %s: %s", recipientUUID, string(kafkaMsg.Value))
 		default:
 			// 客户端 channel 满了，关闭连接
-			log.Logger.Sugar().Warnf("Client channel full, closing connection: %s", recipientUUID)
+			log.Logger.Sugar().Infof("Client channel full, closing connection: %s", recipientUUID)
 			h.mu.Lock()
 			close(recipientClient.send)
 			delete(h.clients, recipientClient.userUUID)
@@ -76,7 +77,7 @@ func (h *Hub) DispatchMessage(kafkaMsg kafka.Message) {
 	}
 }
 
-// 【修改】Run() 只负责注册/注销
+// Run 只负责注册/注销
 func (h *Hub) Run() {
 	log.Logger.Info("WebSocket Hub started")
 
@@ -149,7 +150,7 @@ func (h *Hub) requestOfflineMessageSync(userUUID string) {
 	// 构造同步请求消息
 	syncRequest := map[string]interface{}{
 		"action":    "sync_offline",
-		"user_uuid": userUUID,
+		"useruuid":  userUUID,
 		"timestamp": time.Now().Unix(),
 	}
 
@@ -161,7 +162,7 @@ func (h *Hub) requestOfflineMessageSync(userUUID string) {
 	}
 
 	// 发送到 Logic 服务的同步主题
-	syncTopic := "im_sync_request"
+	syncTopic := config.GetConfig().Kafka.Topics.Sync_request
 	err = h.Producer.SendMessage(syncTopic, requestData)
 	if err != nil {
 		log.Logger.Sugar().Errorf("Failed to send sync request: %v", err)

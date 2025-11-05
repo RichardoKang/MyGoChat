@@ -45,7 +45,9 @@ type (
 
 	// KafkaTopicsConfig 用于存放所有 Kafka 主题的名称
 	KafkaTopicsConfig struct {
-		Ingest string `yaml:"ingest"`
+		Ingest       string `yaml:"ingest"`
+		Sync_request string `yaml:"sync_request"`
+		Delivery     string `yaml:"delivery"`
 	}
 
 	KafkaConfig struct {

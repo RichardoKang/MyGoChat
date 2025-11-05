@@ -4,7 +4,7 @@ import (
 	gwServer "MyGoChat/internal/gateway/server"
 	"MyGoChat/internal/gateway/socket"
 	"MyGoChat/pkg/config"
-	myKafka "MyGoChat/pkg/kafka"
+	mq "MyGoChat/pkg/kafka"
 	"MyGoChat/pkg/log"
 	myRedis "MyGoChat/pkg/redis"
 	"context"
@@ -26,24 +26,25 @@ func main() {
 	// 使用 pkg/redis 包中的全局 Redis 实例
 	redisClient := myRedis.Rdb
 
-	kafkaProducer := myKafka.InitProducer()
+	// kafka producer负责向 Logic Service 发送消息
+	kafkaProducer := mq.InitProducer()
 	defer kafkaProducer.CloseProducer()
 
 	hub := socket.NewHub(kafkaProducer, redisClient, gatewayID)
 	go hub.Run()
 	defer hub.Stop()
 
-	// 【新增】启动 Gateway 自己的消费者
+	// 【新增】启动 Gateway 自己的消费者, 处理来自 Logic Service 的消息
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	deliveryTopic := "im_delivery_" + gatewayID
-	consumer := myKafka.InitConsumer(deliveryTopic, deliveryTopic)
+	deliveryTopic := cfg.Kafka.Topics.Delivery + gatewayID
+	consumer := mq.InitConsumer(deliveryTopic, deliveryTopic)
 
 	// 【关键】: 将 hub.DispatchMessage 作为处理器
-	go myKafka.StartConsumer(ctx, consumer, hub.DispatchMessage)
+	go mq.StartConsumer(ctx, consumer, hub.DispatchMessage)
 
-	newRouter := gwServer.NewGatewayRouter(hub, nil) // 简化版本，不使用复杂的JWT验证
+	newRouter := gwServer.NewGatewayRouter(hub)
 
 	s := &http.Server{
 		Addr:    ":8081", // Gateway 运行在 8081

@@ -62,6 +62,7 @@ func NewRouter(userService *service.UserService, groupService *service.GroupServ
 		message := api.Group("/message")
 		{
 			message.Use(middleware.JWTAuthMiddleware())
+			message.POST("/send", h.SendMessage)                         // 发送消息（HTTP）
 			message.GET("/history/:conversationId", h.GetMessageHistory) // 获取消息历史
 			message.POST("/sync-offline", h.SyncOfflineMessages)         // 同步离线消息
 			message.POST("/mark-read", h.MarkMessagesAsRead)             // 标记消息已读

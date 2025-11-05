@@ -13,11 +13,12 @@ import (
 )
 
 func main() {
-	log.InitLogger(config.GetConfig().Log.Path, config.GetConfig().Log.Level)
+	cfg := config.GetConfig()
+	log.InitLogger(cfg.Log.Path, cfg.Log.Level)
 	log.Logger.Info("start server", log.String("start", "start web server..."))
 
 	// Init Data
-	dataObj, cleanup, err := data.NewData(config.GetConfig())
+	dataObj, cleanup, err := data.NewData(cfg)
 	if err != nil {
 		panic(err)
 	}
@@ -38,7 +39,6 @@ func main() {
 	kafkaProducer := mq.InitProducer()
 	defer kafkaProducer.CloseProducer()
 
-	cfg := config.GetConfig()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -47,7 +47,7 @@ func main() {
 	go mq.StartConsumer(ctx, consumer, messageService.ProcessMessage)
 
 	// 同步请求消费者
-	syncConsumer := mq.InitConsumer("im_sync_request", "logic_sync_group")
+	syncConsumer := mq.InitConsumer(cfg.Kafka.Topics.Sync_request, "logic_sync_group")
 	go mq.StartConsumer(ctx, syncConsumer, messageService.ProcessSyncRequest)
 
 	newRouter := server.NewRouter(userService, groupService, messageService, convService)

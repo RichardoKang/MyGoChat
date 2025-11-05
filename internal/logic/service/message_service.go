@@ -4,6 +4,7 @@ import (
 	pb "MyGoChat/api/v1"
 	"MyGoChat/internal/logic/data"
 	"MyGoChat/internal/model"
+	"MyGoChat/pkg/config"
 	myKafka "MyGoChat/pkg/kafka"
 	"MyGoChat/pkg/log"
 	"context"
@@ -36,67 +37,97 @@ func NewMessageService(msgRepo data.IMessageRepo, convRepo data.IConversationRep
 	}
 }
 
+// GetProducer 返回 Kafka Producer 实例（供 Handler 使用）
+func (s *MessageService) GetProducer() *myKafka.Producer {
+	return s.producer
+}
+
 func (s *MessageService) ProcessMessage(kafkaMsg kafka.Message) {
 	// 1. 反序列化 Protobuf
 	var msg pb.Message
 	if err := proto.Unmarshal(kafkaMsg.Value, &msg); err != nil {
-		//	log.Logger
+		log.Logger.Sugar().Errorf("Failed to unmarshal message: %v", err)
 		return
 	}
 
-	// 2. 解包消息体
+	// 2. 验证消息
+	if err := s.validateMessage(&msg); err != nil {
+		log.Logger.Sugar().Errorf("Invalid message: %v", err)
+		return
+	}
+
+	// 3. 解包消息体
 	body, err := s.unpackProtoBody(msg.ContentType, msg.Body)
 	if err != nil {
-		//log.Errorf("Failed to unpack body: %v", err)
+		log.Logger.Sugar().Errorf("Failed to unpack body: %v", err)
 		return
 	}
 
-	// 3. 构建数据模型
+	// 4. 构建数据模型
 	convObjID, _ := primitive.ObjectIDFromHex(msg.ConversationID)
 	message := &model.Message{
 		ConversationID: convObjID,
 		SenderUUID:     msg.SenderUUID,
 		ContentType:    int16(msg.ContentType),
-		Body:           body, // 需要 model.Message 支持 interface{} 或 JSON
+		Body:           body,
 		SendAt:         time.Now().Unix(),
 	}
 
-	// 4. 存储消息
+	// 5. 存储消息
 	if err := s.msgRepo.Create(message); err != nil {
 		log.Logger.Sugar().Errorf("Failed to save message: %v", err)
 		return
 	}
 
-	// 5. 更新会话最后消息
+	// 6. 更新会话最后消息
 	ctx := context.Background()
 	if err := s.convRepo.UpdateLastMessage(ctx, msg.ConversationID, message); err != nil {
 		log.Logger.Sugar().Warnf("Failed to update conversation: %v", err)
 	}
 
-	// 6. 推送离线消息（通过 Kafka 发给 Gateway）
-	s.pushToOfflineUsers(&msg)
+	// 7. 推送消息给目标用户（在线和离线）
+	s.deliverMessage(&msg)
 }
 
-// pushToOfflineUsers 将消息推送给离线用户
-func (s *MessageService) pushToOfflineUsers(msg *pb.Message) {
+// validateMessage 验证消息的有效性
+func (s *MessageService) validateMessage(msg *pb.Message) error {
+	if msg.SenderUUID == "" {
+		return errors.New("sender UUID is required")
+	}
+
+	if msg.ConversationID == "" {
+		return errors.New("conversation ID is required")
+	}
+
+	if msg.MessageType == 1 && msg.RecipientUUID == "" {
+		return errors.New("recipient UUID is required for private chat")
+	}
+
+	return nil
+}
+
+// deliverMessage 将消息推送给目标用户（在线推送到Gateway，离线存储到Redis）
+func (s *MessageService) deliverMessage(msg *pb.Message) {
 	// 根据消息类型决定推送目标
 	var targetUsers []string
 
 	if msg.MessageType == 1 { // 私聊
 		targetUsers = []string{msg.RecipientUUID}
+		log.Logger.Sugar().Infof("Delivering private message from %s to %s", msg.SenderUUID, msg.RecipientUUID)
 	} else if msg.MessageType == 2 { // 群聊
-		// TODO: 查询群成员列表
+		// 查询群成员列表
 		groupMembers, err := s.getGroupMembers(msg.ConversationID)
 		if err != nil {
 			log.Logger.Sugar().Errorf("Failed to get group members: %v", err)
 			return
 		}
 		targetUsers = groupMembers
+		log.Logger.Sugar().Infof("Delivering group message to %d members", len(targetUsers))
 	}
 
-	// 为每个目标用户发送推送消息
+	// 为每个目标用户推送消息
 	for _, userUUID := range targetUsers {
-		if userUUID == msg.SenderUUID { // 不推送给自己
+		if userUUID == msg.SenderUUID { // 不推送给发送者自己
 			continue
 		}
 
@@ -115,15 +146,18 @@ func (s *MessageService) pushToOfflineUsers(msg *pb.Message) {
 			RecipientUUID:  userUUID,
 		}
 
-		// 根据用户在线状态选择推送策略
+		// 据用户在线状态推送
 		gatewayID := s.getUserGateway(userUUID)
 		if gatewayID != "" {
-			// 用户在线，推送到对应的 Gateway
-			topic := "im_delivery_" + gatewayID
+			// 在线用户：推送到Gateway
+			cfg := config.GetConfig()
+			topic := cfg.Kafka.Topics.Delivery + gatewayID
 			s.publishToKafka(topic, pushMsg)
+			log.Logger.Sugar().Infof("Delivered message to online user %s via gateway %s", userUUID, gatewayID)
 		} else {
-			// 用户离线，存储离线消息（使用 Redis）
+			// 离线用户：存储到Redis
 			s.storeOfflineMessage(userUUID, pushMsg)
+			log.Logger.Sugar().Infof("Stored offline message for user %s", userUUID)
 		}
 	}
 }
@@ -161,6 +195,7 @@ func (s *MessageService) storeOfflineMessage(userUUID string, msg *pb.Message) {
 		return
 	}
 
+	// redis 列表存储离线消息，key格式为 "offline_msg:{userUUID}"
 	key := "offline_msg:" + userUUID
 	err = s.redis.LPush(ctx, key, string(msgData)).Err()
 	if err != nil {
@@ -206,7 +241,8 @@ func (s *MessageService) SyncOfflineMessages(userUUID string) error {
 	}
 
 	// 推送离线消息到网关
-	topic := "im_delivery_" + gatewayID
+	cfg := config.GetConfig()
+	topic := cfg.Kafka.Topics.Delivery + gatewayID
 	for _, msgData := range messages {
 		// 直接发送原始数据
 		err = s.producer.SendMessage(topic, []byte(msgData))
@@ -246,7 +282,7 @@ func (s *MessageService) ProcessSyncRequest(kafkaMsg kafka.Message) {
 		return
 	}
 
-	userUUID, ok := syncRequest["user_uuid"].(string)
+	userUUID, ok := syncRequest["useruuid"].(string)
 	if !ok {
 		log.Logger.Sugar().Errorf("Invalid user_uuid in sync request")
 		return

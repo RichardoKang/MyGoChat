@@ -3,6 +3,7 @@ package data
 import (
 	"MyGoChat/internal/model"
 	"context"
+	"errors"
 	"sort"
 	"time"
 
@@ -92,7 +93,7 @@ func (r *conversationRepo) GetOrCreateConversation(ctx context.Context, particip
 		return &conv, nil // 找到现有会话
 	}
 
-	if err != mongo.ErrNoDocuments {
+	if !errors.Is(err, mongo.ErrNoDocuments) {
 		return nil, err // 查询出错
 	}
 

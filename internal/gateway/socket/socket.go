@@ -21,7 +21,7 @@ var upgrader = websocket.Upgrader{
 
 // ServeWs 处理来自 gin 上下文的 WebSocket 请求。
 func ServeWs(hub *Hub, c *gin.Context) {
-	userUUID, exists := c.Get("userUUID")
+	userUUID, exists := c.Get("useruuid")
 	if !exists {
 		log.Logger.Error("User ID not found in context")
 		return

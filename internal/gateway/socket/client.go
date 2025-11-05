@@ -48,6 +48,7 @@ func (c *Client) readPump() {
 	ingestTopic := config.GetConfig().Kafka.Topics.Ingest
 
 	for {
+		// 读取消息
 		_, messageBytes, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
