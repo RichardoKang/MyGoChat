@@ -13,19 +13,19 @@ import (
 	"golang.org/x/net/context"
 )
 
-type IChatService interface {
-	CreateGroupConversation(ctx context.Context, groupUUID string) error
+type MemberAdder interface {
+	JoinGroupRelation(ctx context.Context, userUUID, groupUUID string) error
 }
 
 type Service struct {
-	repo        Repository
-	userRepo    user.Repository
-	chatService IChatService
-	redis       *redis.Client
+	repo     Repository
+	userRepo user.Repository
+	redis    *redis.Client
+	relRepo  MemberAdder
 }
 
-func NewService(repo Repository, userRepo user.Repository, chatService IChatService) *Service {
-	return &Service{repo: repo, userRepo: userRepo, chatService: chatService}
+func NewService(repo Repository, userRepo user.Repository, relRepo MemberAdder) *Service {
+	return &Service{repo: repo, userRepo: userRepo, relRepo: relRepo}
 }
 
 func (s *Service) CreateGroup(group *Group, adminUserUuid string) error {
@@ -49,10 +49,11 @@ func (s *Service) CreateGroup(group *Group, adminUserUuid string) error {
 		logger.Error("CreateGroup: failed to create group")
 		return err
 	}
-	// 创建群聊会话
-	if err := s.chatService.CreateGroupConversation(context.Background(), group.Uuid); err != nil {
-		logger.Error("CreateGroup: failed to create group conversation")
-		return fmt.Errorf("failed to create group conversation: %w", err)
+
+	// 将创建者添加为群成员
+	if err := s.relRepo.JoinGroupRelation(context.Background(), adminUser.Uuid, group.Uuid); err != nil {
+		logger.Error("CreateGroup: failed to add admin user to group members")
+		return err
 	}
 
 	logger.Info("Group created successfully", log.Any("group", group), log.Any("adminUser", adminUser))

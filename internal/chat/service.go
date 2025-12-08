@@ -3,13 +3,17 @@ package chat
 import (
 	pb "MyGoChat/api/v1"
 	"MyGoChat/internal/group"
+	"MyGoChat/internal/relation"
+	"MyGoChat/internal/user"
 	"MyGoChat/internal/util"
+	"MyGoChat/pkg/common/request"
 	"MyGoChat/pkg/config"
 	myKafka "MyGoChat/pkg/kafka"
 	"MyGoChat/pkg/log"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -21,20 +25,26 @@ import (
 
 type Service struct {
 	repo      Repository
+	relRepo   relation.Repository
 	groupRepo group.Repository
+	userRepo  user.Repository
 	redis     *redis.Client
 	producer  *myKafka.Producer
 }
 
 func NewService(
 	repo Repository,
-	groupRepo group.Repository,
+	relRepo relation.Repository,
+	groupRepo group.Repository, // 【新增】
+	userRepo user.Repository,
 	rdb *redis.Client,
 	producer *myKafka.Producer,
 ) *Service {
 	return &Service{
 		repo:      repo,
-		groupRepo: groupRepo,
+		relRepo:   relRepo,
+		groupRepo: groupRepo, // 【赋值】
+		userRepo:  userRepo,  // 【赋值】
 		redis:     rdb,
 		producer:  producer,
 	}
@@ -52,6 +62,67 @@ func (s *Service) EnqueueMessage(ctx context.Context, msg *pb.Message) error {
 	}
 	// 发送到 Ingest Topic
 	return s.producer.SendMessage(config.GetConfig().Kafka.Topics.Ingest, msgBytes)
+}
+
+// SendMessage 是发送消息的唯一入口
+// 它负责：1. 号码转UUID  2. 生成确定性会话ID  3. 构造消息  4. 发送Kafka
+func (s *Service) SendMessage(ctx context.Context, senderUUID string, req *request.SendMessageRequest) (*pb.Message, error) {
+	var (
+		targetUUID     string
+		conversationID string
+		err            error
+	)
+
+	// 1. 核心逻辑：号码转 UUID + 计算会话 ID
+	if req.MessageType == 1 {
+		// --- 私聊 ---
+		// 前端传的是 Username，我们需要 UserUUID
+		targetUUID, err = s.userRepo.GetUUIDByUsername(ctx, req.TargetName)
+		if err != nil {
+			return nil, errors.New("用户不存在")
+		}
+		// 算法生成确定性 ID: Hash(Sort(A, B))
+		conversationID = util.GetPrivateConversationID(senderUUID, targetUUID)
+
+	} else if req.MessageType == 2 {
+		// --- 群聊 ---
+		// 前端传的是 GroupNumber，我们需要 GroupUUID
+		targetUUID, err = s.groupRepo.GetUUIDByNumber(ctx, req.TargetName)
+		if err != nil {
+			return nil, errors.New("群组不存在")
+		}
+		// 确定性 ID: GroupUUID 本身就是 会话ID
+		conversationID = targetUUID
+	} else {
+		return nil, errors.New("不支持的消息类型")
+	}
+
+	// 2. 构造 Protobuf 消息
+	// 注意：这里全是 UUID，没有任何 Number/Username
+	msg := &pb.Message{
+		Id:             primitive.NewObjectID().Hex(), // 生成消息 ID
+		ConversationID: conversationID,
+		SenderUUID:     senderUUID,
+		RecipientUUID:  targetUUID, // 私聊是对方UUID，群聊是群UUID
+		MessageType:    req.MessageType,
+		ContentType:    req.ContentType,
+		SendAt:         time.Now().Unix(),
+	}
+
+	// 3. 处理消息体 (Any)
+	var errPack error
+	msg.Body, errPack = s.packProtoBody(req.ContentType, req.Body)
+	if errPack != nil {
+		return nil, errPack
+	}
+	// 4. 发送到 Kafka (Ingest Topic)
+	// 消费者收到后会负责：存 Mongo(Upsert) + 推送给用户
+	if err := s.EnqueueMessage(ctx, msg); err != nil {
+		return nil, err
+	}
+
+	// 5. 返回结果
+	return msg, nil
 }
 
 func (s *Service) ProcessMessage(ctx context.Context, kafkaMsg kafka.Message) error {
@@ -128,24 +199,9 @@ func (s *Service) deliverMessage(ctx context.Context, msg *pb.Message) {
 		targetUsers = []string{msg.RecipientUUID}
 		log.Logger.Sugar().Infof("Delivering private message from %s to %s", msg.SenderUUID, msg.RecipientUUID)
 	} else if msg.MessageType == 2 { // 群聊
-		// 查询群成员列表
-		conv, err := s.repo.GetConversationByID(ctx, msg.ConversationID)
+		memberUUIDs, err := s.relRepo.GetGroupMemberUUIDs(ctx, msg.ConversationID)
 		if err != nil {
-			log.Logger.Sugar().Errorf("deliverMessage: failed to find conversation %s: %v", msg.ConversationID, err)
-			return
-		}
-
-		// 校验数据一致性
-		if conv.GroupNumber == "" {
-			log.Logger.Sugar().Errorf("deliverMessage: conversation %s has no group number", msg.ConversationID)
-			return
-		}
-
-		// Step B: [Group域] 用 GroupNumber 查成员列表
-		// s.groupRepo 是注入进来的 group.Repository
-		memberUUIDs, err := s.groupRepo.GetMemberUUIDs(conv.GroupNumber)
-		if err != nil {
-			log.Logger.Sugar().Errorf("deliverMessage: failed to get group members for %s: %v", conv.GroupNumber, err)
+			log.Logger.Sugar().Errorf("deliverMessage: failed to get group members for %s: %v", msg.ConversationID, err)
 			return
 		}
 
@@ -274,12 +330,13 @@ func (s *Service) SyncOfflineMessages(userUUID string) error {
 
 // GetMessageHistory 获取消息历史记录
 func (s *Service) GetMessageHistory(conversationID string, limit, offset int) ([]*Message, error) {
-	return s.repo.GetByConversation(conversationID, limit, offset)
+	ctx := context.Background()
+	return s.repo.GetByConversation(ctx, conversationID, limit, offset)
 }
 
 // MarkMessagesAsRead 标记消息为已读
 func (s *Service) MarkMessagesAsRead(msgIDs []string) error {
-	return s.repo.MarkAsRead(msgIDs)
+	return s.repo.MarkAsRead(context.Background(), msgIDs)
 }
 
 // ProcessSyncRequest 处理离线消息同步请求
@@ -308,6 +365,7 @@ func (s *Service) ProcessSyncRequest(ctx context.Context, kafkaMsg kafka.Message
 	} else {
 		log.Logger.Sugar().Infof("Successfully synced offline messages for user: %s", userUUID)
 	}
+	return nil
 }
 
 // 辅助函数：解包 google.protobuf.Any
@@ -334,6 +392,121 @@ func (s *Service) unpackProtoBody(contentType int32, anyBody *anypb.Any) (any, e
 	default:
 		return nil, errors.New("unknown content type")
 	}
+}
+
+// convertToProtobufAny 将 JSON body 转换为 google.protobuf.Any 类型
+func convertToProtobufAny(contentType int32, body interface{}) (*anypb.Any, error) {
+	switch contentType {
+	case 1: // 文本消息
+		if bodyMap, ok := body.(map[string]interface{}); ok {
+			if content, exists := bodyMap["content"]; exists {
+				textBody := &pb.TextBody{
+					Content: content.(string),
+				}
+				return anypb.New(textBody)
+			}
+		}
+		return nil, fmt.Errorf("invalid text body format, expected {\"content\": \"...\"}")
+
+	case 2, 3, 4: // 图片、文件、语音消息
+		if bodyMap, ok := body.(map[string]interface{}); ok {
+			fileBody := &pb.FileAttachment{
+				Url:      getStringValue(bodyMap, "url"),
+				FileName: getStringValue(bodyMap, "fileName"),
+				Size:     getInt64Value(bodyMap, "size"),
+				MimeType: getStringValue(bodyMap, "mimeType"),
+			}
+			return anypb.New(fileBody)
+		}
+		return nil, fmt.Errorf("invalid file body format")
+
+	default:
+		return nil, fmt.Errorf("unsupported content type: %d", contentType)
+	}
+}
+
+// packProtoBody 将前端传来的 JSON Body (interface{}) 打包成 Protobuf Any 类型
+func (s *Service) packProtoBody(contentType int32, body interface{}) (*anypb.Any, error) {
+	switch contentType {
+	case 1: // 文本消息
+		// JSON 解析后的 body 通常是 map[string]interface{}
+		if bodyMap, ok := body.(map[string]interface{}); ok {
+			if content, exists := bodyMap["content"]; exists {
+				if strContent, ok := content.(string); ok {
+					textBody := &pb.TextBody{
+						Content: strContent,
+					}
+					return anypb.New(textBody)
+				}
+			}
+		}
+		return nil, fmt.Errorf("invalid text body format, expected {\"content\": \"...\"}")
+
+	case 2, 3, 4: // 图片、文件、语音
+		if bodyMap, ok := body.(map[string]interface{}); ok {
+			fileBody := &pb.FileAttachment{
+				Url:      s.getStringValue(bodyMap, "url"),
+				FileName: s.getStringValue(bodyMap, "fileName"),
+				Size:     s.getInt64Value(bodyMap, "size"),
+				MimeType: s.getStringValue(bodyMap, "mimeType"),
+			}
+			return anypb.New(fileBody)
+		}
+		return nil, fmt.Errorf("invalid file body format")
+
+	default:
+		return nil, fmt.Errorf("unsupported content type: %d", contentType)
+	}
+}
+
+// --- 私有辅助工具函数 ---
+
+func (s *Service) getStringValue(m map[string]interface{}, key string) string {
+	if val, exists := m[key]; exists {
+		if str, ok := val.(string); ok {
+			return str
+		}
+	}
+	return ""
+}
+
+func (s *Service) getInt64Value(m map[string]interface{}, key string) int64 {
+	if val, exists := m[key]; exists {
+		switch v := val.(type) {
+		case int64:
+			return v
+		case int:
+			return int64(v)
+		case float64: // JSON 数字默认解析为 float64
+			return int64(v)
+		}
+	}
+	return 0
+}
+
+// 辅助函数：安全地从 map 中获取字符串值
+func getStringValue(m map[string]interface{}, key string) string {
+	if val, exists := m[key]; exists {
+		if str, ok := val.(string); ok {
+			return str
+		}
+	}
+	return ""
+}
+
+// 辅助函数：安全地从 map 中获取 int64 值
+func getInt64Value(m map[string]interface{}, key string) int64 {
+	if val, exists := m[key]; exists {
+		switch v := val.(type) {
+		case int64:
+			return v
+		case int:
+			return int64(v)
+		case float64:
+			return int64(v)
+		}
+	}
+	return 0
 }
 
 /***************************************************************************************************************

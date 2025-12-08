@@ -12,6 +12,7 @@ type Repository interface {
 	JoinGroupRelation(ctx context.Context, userUUID, groupUUID string) error
 	CreateFriendRelation(ctx context.Context, userUUID, friendUUID string) error
 	ListUserRelation(ctx context.Context, userUUID string) ([]*Relation, error)
+	GetGroupMemberUUIDs(ctx context.Context, groupUUID string) ([]string, error)
 }
 
 type repository struct {
@@ -74,4 +75,17 @@ func (r *repository) CreateFriendRelation(ctx context.Context, userUUID, friendU
 		}
 		return nil
 	})
+}
+
+func (r *repository) GetGroupMemberUUIDs(ctx context.Context, groupUUID string) ([]string, error) {
+	var memberUUIDs []string
+	err := r.db.WithContext(ctx).
+		Model(&Relation{}).
+		Where("target_uuid = ? AND type = ? AND status = ?", groupUUID, TypeGroup, 1).
+		Pluck("user_uuid", &memberUUIDs).Error
+
+	if err != nil {
+		return nil, err
+	}
+	return memberUUIDs, nil
 }

@@ -118,20 +118,23 @@ func (r *repository) GetConversationsByUserID(ctx context.Context, userID string
 
 // UpdateLastMessage 更新会话的最后一条消息
 func (r *repository) UpdateLastMessage(ctx context.Context, conversationID string, message *Message) error {
-	objID, err := primitive.ObjectIDFromHex(conversationID)
-	if err != nil {
-		return err
-	}
+	// 这里的 conversationID 已经是 string 类型 (因为是确定性 ID)
 
 	update := bson.M{
 		"$set": bson.M{
 			"lastMessage":          message.Body,
 			"lastMessageTimestamp": message.SendAt,
 			"updatedAt":            time.Now(),
+			"type":                 message.ContentType,
 		},
 	}
 
-	_, err = r.convColl.UpdateByID(ctx, objID, update)
+	// 【关键】开启 Upsert: True
+	// 含义：如果找不到 id=conversationID 的记录，就插入一条新的
+	opts := options.Update().SetUpsert(true)
+
+	// filter 直接用 _id: conversationID
+	_, err := r.convColl.UpdateByID(ctx, conversationID, update, opts)
 	return err
 }
 

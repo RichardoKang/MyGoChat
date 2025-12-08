@@ -36,9 +36,9 @@ func main() {
 	defer kafkaProducer.CloseProducer()
 
 	// Init Services
-	chatService := chat.NewService(chatRepo, groupRepo, dataObj.GetRedisClient(), kafkaProducer)
+	chatService := chat.NewService(chatRepo, relationRepo, groupRepo, userRepo, dataObj.GetRedisClient(), kafkaProducer)
 	userService := user.NewService(userRepo, dataObj.GetRedisClient())
-	groupService := group.NewService(groupRepo, userRepo, chatService)
+	groupService := group.NewService(groupRepo, userRepo, relationRepo)
 	relationService := relation.NewService(relationRepo)
 
 	ctx, cancel := context.WithCancel(context.Background())
