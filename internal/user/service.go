@@ -4,6 +4,7 @@ import (
 	"MyGoChat/internal/util"
 	"MyGoChat/pkg/log"
 	"MyGoChat/pkg/token"
+	"context"
 	"errors"
 	"time"
 
@@ -109,4 +110,8 @@ func (s *Service) GetUserStatus(userUUID string) (severID string, isOnline bool,
 		return "", false, err
 	}
 	return severID, true, nil
+}
+
+func (s *Service) GetUserUUID(ctx context.Context, username string) (string, error) {
+	return s.repo.GetUUIDByUsername(ctx, username)
 }

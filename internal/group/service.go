@@ -92,49 +92,6 @@ func (s *Service) GetGroupByGroupNumber(groupNumber string) (response.GroupRespo
 	return groupResponse, nil
 }
 
-func (s *Service) JoinGroup(userUuid string, groupNumber string, nickname string) error {
-	user, err := s.userRepo.GetUserByUuid(userUuid)
-	if err != nil {
-		logger.Error("JoinGroup: user not found")
-		return err
-	}
-
-	group, err := s.repo.GetGroupByGroupNumber(groupNumber)
-	if err != nil {
-		logger.Error("JoinGroup: group not found")
-		return err
-	}
-
-	if err := s.repo.JoinGroup(user, group, nickname); err != nil {
-		logger.Error("JoinGroup: failed to join group")
-		return err
-	}
-
-	logger.Info("JoinGroup: user joined group successfully", log.Any("userUuid", userUuid), log.Any("groupNumber", groupNumber))
-	return nil
-}
-
-// GetGroupMembersByGroupNumber 通过群号获取群成员详细信息
-func (s *Service) GetGroupMembersByGroupNumber(groupNumber string) ([]response.GroupMemberResponse, error) {
-
-	group, err := s.repo.GetGroupByGroupNumber(groupNumber)
-	if err != nil {
-		logger.Error("GetGroupMembersByGroupNumber: group not found", log.String("groupNumber", groupNumber))
-		return nil, err
-	}
-
-	members, err := s.repo.GetGroupMembers(groupNumber)
-	if err != nil {
-		logger.Error("GetGroupMembersByGroupNumber: failed to get group members", log.Any("groupId", group.ID))
-		return nil, err
-	}
-
-	logger.Info("GetGroupMembersByGroupNumber: fetched group members successfully",
-		log.String("groupNumber", groupNumber),
-		log.Int("memberCount", len(members)))
-	return members, nil
-}
-
 func (s *Service) generateGroupNumber(ctx context.Context) (string, error) {
 	// 1. 利用 Redis 获取自增 ID (基数)
 	seqId, err := s.redis.Incr(ctx, "sys:group_seq").Result()

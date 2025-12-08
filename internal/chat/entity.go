@@ -7,9 +7,8 @@ import (
 )
 
 type Conversation struct {
-	ID           string   `bson:"_id"`
-	Type         int      `bson:"type"`         // 1=私聊, 2=群聊
-	Participants []string `bson:"participants"` // 存 user_id 列表
+	ID   string `bson:"_id"`
+	Type int    `bson:"type"` // 1=私聊, 2=群聊
 
 	// 会话信息
 	LastMessage          interface{} `bson:"lastMessage,omitempty"` // 最后一条消息内容

@@ -18,10 +18,10 @@ import (
 )
 
 type Handler struct {
-	service Service
+	service *Service
 }
 
-func NewHandler(s Service) *Handler {
+func NewHandler(s *Service) *Handler {
 	return &Handler{service: s}
 }
 
@@ -50,7 +50,7 @@ func (h *Handler) SendMessage(c *gin.Context) {
 				return
 			}
 			ctx := context.Background()
-			conv, err := h.service.GetOrCreatePrivateConversation(
+			conv, err := h.service.GetPrivateConversation(
 				ctx,
 				senderUUID.(string),
 				req.RecipientUUID,
@@ -60,7 +60,7 @@ func (h *Handler) SendMessage(c *gin.Context) {
 				c.JSON(http.StatusInternalServerError, response.FailMsg("创建会话失败"))
 				return
 			}
-			conversationID = conv.ID.Hex()
+			conversationID = conv.ID
 			log.Logger.Sugar().Infof("Created/Retrieved conversation: %s", conversationID)
 		} else {
 			c.JSON(http.StatusBadRequest, response.FailMsg("群聊必须指定会话ID"))
@@ -296,7 +296,7 @@ func (h *Handler) CreatePrivateConversation(c *gin.Context) {
 	}
 
 	ctx := context.Background()
-	conversation, err := h.service.GetOrCreatePrivateConversation(ctx, userUUID.(string), req.TargetUserUUID)
+	conversation, err := h.service.GetPrivateConversation(ctx, userUUID.(string), req.TargetUserUUID)
 	if err != nil {
 		log.Logger.Sugar().Errorf("Failed to create private conversation: %v", err)
 		c.JSON(http.StatusInternalServerError, response.FailMsg("创建私聊会话失败"))

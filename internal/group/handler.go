@@ -10,10 +10,10 @@ import (
 )
 
 type Handler struct {
-	service Service
+	service *Service
 }
 
-func NewHandler(s Service) *Handler {
+func NewHandler(s *Service) *Handler {
 	return &Handler{service: s}
 }
 
@@ -63,41 +63,4 @@ func (h *Handler) GetMyGroups(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, response.SuccessMsg(groups))
-}
-
-func (h *Handler) JoinGroup(c *gin.Context) {
-	var req request.JoinGroupRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, response.FailMsg(err.Error()))
-		return
-	}
-
-	value, exist := c.Get("useruuid")
-	if !exist {
-		c.JSON(http.StatusUnauthorized, response.FailMsg("Unauthorized"))
-		return
-	}
-	userUuid := value.(string)
-
-	if err := h.service.JoinGroup(userUuid, req.GroupNumber, req.Nickname); err != nil {
-		c.JSON(http.StatusInternalServerError, response.FailMsg(err.Error()))
-		return
-	}
-	c.JSON(http.StatusOK, response.SuccessMsg("Joined group successfully"))
-}
-
-func (h *Handler) GetGroupMembers(c *gin.Context) {
-	var req request.GetGroupMembersRequest
-	if err := c.ShouldBindUri(&req); err != nil {
-		c.JSON(http.StatusBadRequest, response.FailMsg(err.Error()))
-		return
-	}
-
-	// 使用通过群号获取群成员的方法
-	members, err := h.service.GetGroupMembersByGroupNumber(req.GroupNumber)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, response.FailMsg(err.Error()))
-		return
-	}
-	c.JSON(http.StatusOK, response.SuccessMsg(members))
 }

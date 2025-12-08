@@ -39,7 +39,7 @@ func NewHub(producer *myKafka.Producer, redisClient *redis.Client, gatewayID str
 }
 
 // DispatchMessage 是 Kafka 处理器
-func (h *Hub) DispatchMessage(kafkaMsg kafka.Message) {
+func (h *Hub) DispatchMessage(ctx context.Context, kafkaMsg kafka.Message) {
 	var msg pb.Message
 	if err := proto.Unmarshal(kafkaMsg.Value, &msg); err != nil {
 		log.Logger.Sugar().Errorf("DispatchMessage: 反序列化失败: %v", err)

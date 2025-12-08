@@ -4,6 +4,7 @@ import (
 	"MyGoChat/internal/chat"
 	"MyGoChat/internal/group"
 	"MyGoChat/internal/platform"
+	"MyGoChat/internal/relation"
 	"MyGoChat/internal/server"
 	"MyGoChat/internal/user"
 	"MyGoChat/pkg/config"
@@ -28,31 +29,36 @@ func main() {
 
 	userRepo := user.NewUserRepo(dataObj)
 	groupRepo := group.NewGroupRepo(dataObj)
-	convRepo := chat.NewConversationRepo(dataObj)
-	msgRepo := chat.NewMessageRepo(dataObj)
-
-	// Init Services
-	userService := user.NewUserService(userRepo, dataObj.GetRedisClient())
-	groupService := group.NewGroupService(groupRepo, userRepo)
-	// 使用 RedisManager 提供更强大的 Redis 操作
-	messageService := chat.NewMessageService(msgRepo, convRepo, groupRepo, dataObj.GetRedisClient(), mq.InitProducer())
-	convService := chat.NewConversationService(convRepo)
+	chatRepo := chat.NewChatRepo(dataObj)
+	relationRepo := relation.NewRelationRepo(dataObj)
 
 	kafkaProducer := mq.InitProducer()
 	defer kafkaProducer.CloseProducer()
+
+	// Init Services
+	chatService := chat.NewService(chatRepo, groupRepo, dataObj.GetRedisClient(), kafkaProducer)
+	userService := user.NewService(userRepo, dataObj.GetRedisClient())
+	groupService := group.NewService(groupRepo, userRepo, chatService)
+	relationService := relation.NewService(relationRepo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// 消息处理消费者
 	consumer := mq.InitConsumer(cfg.Kafka.Topics.Ingest, "logic_service_group")
-	go mq.StartConsumer(ctx, consumer, messageService.ProcessMessage)
+	go mq.StartConsumer(ctx, consumer, chatService.ProcessMessage)
 
 	// 同步请求消费者
 	syncConsumer := mq.InitConsumer(cfg.Kafka.Topics.Sync_request, "logic_sync_group")
-	go mq.StartConsumer(ctx, syncConsumer, messageService.ProcessSyncRequest)
+	go mq.StartConsumer(ctx, syncConsumer, chatService.ProcessSyncRequest)
 
-	newRouter := server.NewRouter(userService, groupService, messageService, convService)
+	// Init Router
+	uHandler := user.NewHandler(userService)
+	gHandler := group.NewHandler(groupService)
+	cHandler := chat.NewHandler(chatService)
+	rHandler := relation.NewHandler(relationService)
+
+	newRouter := server.NewRouter(uHandler, gHandler, cHandler, rHandler)
 
 	s := &http.Server{
 		Addr:           ":8080",

@@ -4,6 +4,7 @@ import (
 	"MyGoChat/internal/platform"
 	"MyGoChat/internal/user"
 	"MyGoChat/pkg/common/response"
+	"context"
 
 	"gorm.io/gorm"
 )
@@ -12,8 +13,7 @@ type Repository interface {
 	CreateGroup(group *Group, adminUser *user.User) error
 	GetMyGroups(userID uint) ([]response.GroupResponse, error)
 	GetGroupByGroupNumber(groupNumber string) (*Group, error)
-	JoinGroup(user *user.User, group *Group, nickname string) error
-	GetGroupMembers(groupNumber string) ([]response.GroupMemberResponse, error)
+	GetUUIDByNumber(ctx context.Context, groupNumber string) (string, error)
 }
 
 type repository struct {
@@ -25,7 +25,7 @@ func NewGroupRepo(data *platform.Data) Repository {
 }
 
 func (r *repository) CreateGroup(group *Group, adminUser *user.User) error {
-	if err := r.db.AutoMigrate(&Group{}, &GroupMember{}); err != nil {
+	if err := r.db.AutoMigrate(&Group{}); err != nil {
 		return err
 	}
 
@@ -34,13 +34,7 @@ func (r *repository) CreateGroup(group *Group, adminUser *user.User) error {
 		return err
 	}
 
-	groupMember := GroupMember{
-		UserID:   adminUser.ID,
-		GroupID:  group.ID,
-		Nickname: adminUser.Nickname,
-		Mute:     false,
-	}
-	return r.db.Save(&groupMember).Error
+	return nil
 }
 
 func (r *repository) GetMyGroups(userID uint) ([]response.GroupResponse, error) {
@@ -62,34 +56,15 @@ func (r *repository) GetGroupByGroupNumber(groupNumber string) (*Group, error) {
 	return &group, nil
 }
 
-func (r *repository) JoinGroup(user *user.User, group *Group, nickname string) error {
-	var existingMember GroupMember
-	result := r.db.Where("user_id = ? AND group_id = ?", user.ID, group.ID).First(&existingMember)
-	if result.Error == nil {
-		return nil // User is already a member
+func (r *repository) GetUUIDByNumber(ctx context.Context, number string) (string, error) {
+	var group Group
+	err := r.db.WithContext(ctx).
+		Select("uuid").
+		Where("group_number = ?", number).
+		First(&group).Error
+
+	if err != nil {
+		return "", err
 	}
-
-	groupMember := GroupMember{
-		UserID:   user.ID,
-		GroupID:  group.ID,
-		Nickname: nickname,
-		Mute:     false,
-	}
-	return r.db.Save(&groupMember).Error
-}
-
-func (r *repository) GetGroupMembers(groupNumber string) ([]response.GroupMemberResponse, error) {
-
-	groupID := r.db.Table("groups").Select("id").Where("group_number = ?", groupNumber).Scan(new(uint)).RowsAffected
-	if groupID == 0 {
-		return nil, gorm.ErrRecordNotFound
-	}
-
-	var members []response.GroupMemberResponse
-	result := r.db.Table("group_members").
-		Select("group_members.user_id, users.username, group_members.nickname, group_members.mute").
-		Joins("join users on group_members.user_id = users.id").
-		Where("group_members.group_id = ?", groupID).
-		Scan(&members)
-	return members, result.Error
+	return group.Uuid, nil
 }

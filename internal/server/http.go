@@ -3,20 +3,28 @@ package server
 import (
 	"MyGoChat/internal/chat"
 	"MyGoChat/internal/group"
-	middleware2 "MyGoChat/internal/middleware"
+	"MyGoChat/internal/middleware"
+	"MyGoChat/internal/relation"
 	"MyGoChat/internal/user"
+
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
 
-func NewRouter(userService *user.UserService, groupService *group.GroupService, messageService *chat.Service, convService *chat.ConversationService) *gin.Engine {
+func NewRouter(
+	userHandler *user.Handler,
+	groupHandler *group.Handler,
+	chatHandler *chat.Handler,
+	relaHandler *relation.Handler,
+
+) *gin.Engine {
 	gin.SetMode(gin.DebugMode)
 
 	r := gin.Default()
 
 	// CORS Middleware
-	r.Use(middleware2.CORSMiddleware())
+	r.Use(middleware.CORSMiddleware())
 
 	// hostname/api
 	api := r.Group("/api")
@@ -28,44 +36,37 @@ func NewRouter(userService *user.UserService, groupService *group.GroupService, 
 		// hostname/api/user
 		user := api.Group("/user")
 		{
-			user.POST("/register", h.Register)
-			user.POST("/login", h.Login)
+			user.POST("/register", userHandler.Register) // 用户注册
+			user.POST("/login", userHandler.Login)       // 用户登录
 
 			info := user.Group("/info")
-			info.Use(middleware2.JWTAuthMiddleware())
+			info.Use(middleware.JWTAuthMiddleware())
 			{
-				info.PUT("/update", h.Update)
+				info.PUT("/update", userHandler.Update) // 更新用户信息
 			}
 		}
 		// hostname/api/group
 		group := api.Group("/group")
 		{
-			group.Use(middleware2.JWTAuthMiddleware())
-			group.POST("/create", h.CreateGroup)
-			group.GET("/mine", h.GetMyGroups)
-			group.POST("/join", h.JoinGroup)
-			group.GET("/:groupnumber/members", h.GetGroupMembers)
+			group.Use(middleware.JWTAuthMiddleware())
+			group.POST("/create", groupHandler.CreateGroup)
 		}
 
 		// hostname/api/message - 消息相关API
 		message := api.Group("/message")
 		{
-			message.Use(middleware2.JWTAuthMiddleware())
-			message.POST("/send", h.SendMessage)                         // 发送消息（HTTP）
-			message.GET("/history/:conversationId", h.GetMessageHistory) // 获取消息历史
-			message.POST("/sync-offline", h.SyncOfflineMessages)         // 同步离线消息
-			message.POST("/mark-read", h.MarkMessagesAsRead)             // 标记消息已读
+			message.Use(middleware.JWTAuthMiddleware())
+			message.POST("/send", chatHandler.SendMessage)                         // 发送消息（HTTP）
+			message.GET("/history/:conversationId", chatHandler.GetMessageHistory) // 获取历史消息
+			message.POST("/sync-offline", chatHandler.SyncOfflineMessages)         // 同步离线消息 // 标记消息为已读
 		}
 
-		// hostname/api/conversation - 会话相关API
-		conversation := api.Group("/conversation")
+		relations := api.Group("/relations")
 		{
-			conversation.Use(middleware2.JWTAuthMiddleware())
-			conversation.GET("/list", h.GetConversations)                           // 获取会话列表
-			conversation.POST("/private", h.CreatePrivateConversation)              // 创建私聊会话
-			conversation.POST("/group", h.CreateGroupConversation)                  // 创建/获取群聊会话
-			conversation.GET("/group/:groupNumber", h.GetConversationByGroupNumber) // 通过群号获取会话ID
-			conversation.POST("/users", h.GetConversationByUsers)                   // 通过用户获取私聊会话ID
+			relations.Use(middleware.JWTAuthMiddleware())
+			relations.POST("/add-group", relaHandler.JoinGroupRelation)     // 加入群组
+			relations.POST("/add-friend", relaHandler.CreateFriendRelation) // 添加好友
+			relations.GET("list", relaHandler.ListUserRelations)            // 获取用户关系列表
 		}
 
 	}

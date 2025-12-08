@@ -8,11 +8,8 @@ import (
 	myKafka "MyGoChat/pkg/kafka"
 	"MyGoChat/pkg/log"
 	"context"
-	"crypto/md5"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"sort"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -57,25 +54,25 @@ func (s *Service) EnqueueMessage(ctx context.Context, msg *pb.Message) error {
 	return s.producer.SendMessage(config.GetConfig().Kafka.Topics.Ingest, msgBytes)
 }
 
-func (s *Service) ProcessMessage(ctx context.Context, kafkaMsg kafka.Message) {
+func (s *Service) ProcessMessage(ctx context.Context, kafkaMsg kafka.Message) error {
 	// 1. 反序列化 Protobuf
 	var msg pb.Message
 	if err := proto.Unmarshal(kafkaMsg.Value, &msg); err != nil {
 		log.Logger.Sugar().Errorf("Failed to unmarshal message: %v", err)
-		return
+		return err
 	}
 
 	// 2. 验证消息
 	if err := s.validateMessage(&msg); err != nil {
 		log.Logger.Sugar().Errorf("Invalid message: %v", err)
-		return
+		return err
 	}
 
 	// 3. 解包消息体
 	body, err := s.unpackProtoBody(msg.ContentType, msg.Body)
 	if err != nil {
 		log.Logger.Sugar().Errorf("Failed to unpack body: %v", err)
-		return
+		return err
 	}
 
 	// 4. 构建数据模型
@@ -91,16 +88,18 @@ func (s *Service) ProcessMessage(ctx context.Context, kafkaMsg kafka.Message) {
 	// 5. 存储消息
 	if err := s.repo.CreateMsg(ctx, message); err != nil {
 		log.Logger.Sugar().Errorf("Failed to save message: %v", err)
-		return
+		return err
 	}
 
 	// 6. 更新会话最后消息
 	if err := s.repo.UpdateLastMessage(ctx, msg.ConversationID, message); err != nil {
 		log.Logger.Sugar().Warnf("Failed to update conversation: %v", err)
+		return err
 	}
 
 	// 7. 推送消息给目标用户（在线和离线）
 	s.deliverMessage(ctx, &msg)
+	return nil
 }
 
 // validateMessage 验证消息的有效性
@@ -284,23 +283,22 @@ func (s *Service) MarkMessagesAsRead(msgIDs []string) error {
 }
 
 // ProcessSyncRequest 处理离线消息同步请求
-func (s *Service) ProcessSyncRequest(kafkaMsg kafka.Message) {
+func (s *Service) ProcessSyncRequest(ctx context.Context, kafkaMsg kafka.Message) error {
 	var syncRequest map[string]interface{}
 	if err := json.Unmarshal(kafkaMsg.Value, &syncRequest); err != nil {
 		log.Logger.Sugar().Errorf("Failed to unmarshal sync request: %v", err)
-		return
+		return err
 	}
 
 	action, ok := syncRequest["action"].(string)
 	if !ok || action != "sync_offline" {
-		log.Logger.Sugar().Warnf("Unknown sync request action: %v", action)
-		return
+		return errors.New("invalid sync action")
 	}
 
 	userUUID, ok := syncRequest["useruuid"].(string)
 	if !ok {
 		log.Logger.Sugar().Errorf("Invalid user_uuid in sync request")
-		return
+		return errors.New("invalid user_uuid in sync request")
 	}
 
 	// 同步离线消息
@@ -347,27 +345,9 @@ func (s *Service) GetConversationsByUserID(ctx context.Context, userID string, l
 	return s.repo.GetConversationsByUserID(ctx, userID, limit)
 }
 
-// CreatePrivateChat 创建私聊会话
-func (s *Service) CreatePrivateChat(ctx context.Context, userID1, userID2 string) (*Conversation, error) {
-
-	convID := util.GetPrivateConversationID(userID1, userID2)
-
-	conv := &Conversation{
-		ID:                   convID,
-		Type:                 1,
-		Participants:         []string{userID1, userID2},
-		CreatedAt:            time.Now(),
-		UpdatedAt:            time.Now(),
-		LastMessageTimestamp: time.Now().Unix(),
-	}
-
-	err := s.repo.CreateConversation(ctx, conv)
-	return conv, err
-}
-
 // GetPrivateConversation 获取私聊会话
 func (s *Service) GetPrivateConversation(ctx context.Context, userID1, userID2 string) (*Conversation, error) {
-	convID := getPrivateConversationID(userID1, userID2)
+	convID := util.GetPrivateConversationID(userID1, userID2)
 
 	return s.repo.GetConversationByID(ctx, convID)
 }
@@ -376,10 +356,9 @@ func (s *Service) GetPrivateConversation(ctx context.Context, userID1, userID2 s
 func (s *Service) CreateGroupConversation(ctx context.Context, groupUUID string) error {
 
 	conv := &Conversation{
-		ID:           groupUUID,
-		Type:         2,
-		Participants: []string{},
-		CreatedAt:    time.Now(),
+		ID:        groupUUID,
+		Type:      2,
+		CreatedAt: time.Now(),
 	}
 
 	return s.repo.CreateConversation(ctx, conv)

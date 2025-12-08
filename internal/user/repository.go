@@ -2,6 +2,7 @@ package user
 
 import (
 	"MyGoChat/internal/platform"
+	"context"
 	"errors"
 
 	"gorm.io/gorm"
@@ -13,6 +14,7 @@ type Repository interface {
 	Update(user *User) error
 	GetUserByUuid(uuid string) (*User, error)
 	GetUserByID(id uint) (*User, error)
+	GetUUIDByUsername(ctx context.Context, username string) (string, error)
 }
 
 type repository struct {
@@ -82,4 +84,18 @@ func (r *repository) GetUserByID(id uint) (*User, error) {
 		return nil, res.Error
 	}
 	return &user, nil
+}
+
+func (r *repository) GetUUIDByUsername(ctx context.Context, username string) (string, error) {
+	var user User
+	// 只查 uuid 字段，性能更高
+	err := r.db.WithContext(ctx).
+		Select("uuid").
+		Where("username = ?", username).
+		First(&user).Error
+
+	if err != nil {
+		return "", err
+	}
+	return user.Uuid, nil
 }
