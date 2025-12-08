@@ -1,7 +1,6 @@
-package handler
+package group
 
 import (
-	"MyGoChat/internal/model"
 	"MyGoChat/pkg/common/request"
 	"MyGoChat/pkg/common/response"
 	"net/http"
@@ -9,6 +8,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+type Handler struct {
+	service Service
+}
+
+func NewHandler(s Service) *Handler {
+	return &Handler{service: s}
+}
 
 func (h *Handler) CreateGroup(c *gin.Context) {
 	var req request.CreateGroupRequest
@@ -30,11 +37,12 @@ func (h *Handler) CreateGroup(c *gin.Context) {
 	adminUserUuid := value.(string)
 
 	// 调用服务层创建群组的逻辑
-	group := &model.Group{
+	group := &Group{
 		Name: req.GroupName,
 	}
 
-	if err := h.GroupService.CreateGroup(group, adminUserUuid); err != nil {
+	if err := h.service.CreateGroup(group, adminUserUuid); err != nil {
+
 		c.JSON(http.StatusInternalServerError, response.FailMsg(err.Error()))
 		return
 	}
@@ -49,7 +57,7 @@ func (h *Handler) GetMyGroups(c *gin.Context) {
 	}
 	userUuid := value.(string)
 
-	groups, err := h.GroupService.GetMyGroups(userUuid)
+	groups, err := h.service.GetMyGroups(userUuid)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, response.FailMsg(err.Error()))
 		return
@@ -71,7 +79,7 @@ func (h *Handler) JoinGroup(c *gin.Context) {
 	}
 	userUuid := value.(string)
 
-	if err := h.GroupService.JoinGroup(userUuid, req.GroupNumber, req.Nickname); err != nil {
+	if err := h.service.JoinGroup(userUuid, req.GroupNumber, req.Nickname); err != nil {
 		c.JSON(http.StatusInternalServerError, response.FailMsg(err.Error()))
 		return
 	}
@@ -86,7 +94,7 @@ func (h *Handler) GetGroupMembers(c *gin.Context) {
 	}
 
 	// 使用通过群号获取群成员的方法
-	members, err := h.GroupService.GetGroupMembersByGroupNumber(req.GroupNumber)
+	members, err := h.service.GetGroupMembersByGroupNumber(req.GroupNumber)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, response.FailMsg(err.Error()))
 		return

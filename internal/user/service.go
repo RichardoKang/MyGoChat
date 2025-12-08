@@ -1,8 +1,6 @@
-package service
+package user
 
 import (
-	"MyGoChat/internal/logic/data"
-	"MyGoChat/internal/model"
 	"MyGoChat/internal/util"
 	"MyGoChat/pkg/log"
 	"MyGoChat/pkg/token"
@@ -13,16 +11,16 @@ import (
 	"github.com/google/uuid"
 )
 
-type UserService struct {
-	repo data.IUserRepo
+type Service struct {
+	repo Repository
 	rdb  *redis.Client
 }
 
-func NewUserService(repo data.IUserRepo, rdb *redis.Client) *UserService {
-	return &UserService{repo: repo, rdb: rdb}
+func NewService(repo Repository, rdb *redis.Client) *Service {
+	return &Service{repo: repo, rdb: rdb}
 }
 
-func (s *UserService) Register(user *model.User) (string, error) {
+func (s *Service) Register(user *User) (string, error) {
 	logger := log.Logger
 
 	hashedPassword, err := util.HashPassword(user.Password)
@@ -38,14 +36,14 @@ func (s *UserService) Register(user *model.User) (string, error) {
 	user.CreateAt = time.Now()
 
 	if err := s.repo.Create(user); err != nil {
-		logger.Sugar().Errorf("user_service: Create user error: %v", err)
+		logger.Sugar().Errorf("user_service: CreateMsg user error: %v", err)
 		return "", err
 	}
 
 	logger.Sugar().Infof("user_service: User registered successfully: %v", user.Username)
 
 	// Generate JWT token
-	tokenString, err := token.GenerateToken(user)
+	tokenString, err := token.GenerateToken(user.Uuid, user.Username)
 	if err != nil {
 		logger.Sugar().Errorf("user_service: Failed to generate token for user %s: %v", user.Username, err)
 		return "", err
@@ -56,7 +54,7 @@ func (s *UserService) Register(user *model.User) (string, error) {
 	return tokenString, nil
 }
 
-func (s *UserService) Login(user *model.User) (string, error) {
+func (s *Service) Login(user *User) (string, error) {
 	dbUser, err := s.repo.GetUserByUsername(user.Username)
 	if err != nil {
 		return "", err
@@ -67,7 +65,7 @@ func (s *UserService) Login(user *model.User) (string, error) {
 	}
 
 	// Generate JWT token
-	tokenString, err := token.GenerateToken(dbUser)
+	tokenString, err := token.GenerateToken(dbUser.Uuid, dbUser.Username)
 	if err != nil {
 		log.Logger.Sugar().Errorf("user_service: Failed to generate token for user %s: %v", user.Username, err)
 		return "", err
@@ -76,7 +74,7 @@ func (s *UserService) Login(user *model.User) (string, error) {
 	return tokenString, nil
 }
 
-func (s *UserService) Update(user *model.User, userUuid string) error {
+func (s *Service) Update(user *User, userUuid string) error {
 	user.Uuid = userUuid
 
 	if user.Uuid == "" {
@@ -94,15 +92,15 @@ func (s *UserService) Update(user *model.User, userUuid string) error {
 	return s.repo.Update(user)
 }
 
-func (s *UserService) GetUserByUuid(uuid string) (*model.User, error) {
+func (s *Service) GetUserByUuid(uuid string) (*User, error) {
 	return s.repo.GetUserByUuid(uuid)
 }
 
-func (s *UserService) GetUserByID(id uint) (*model.User, error) {
+func (s *Service) GetUserByID(id uint) (*User, error) {
 	return s.repo.GetUserByID(id)
 }
 
-func (s *UserService) GetUserStatus(userUUID string) (severID string, isOnline bool, err error) {
+func (s *Service) GetUserStatus(userUUID string) (severID string, isOnline bool, err error) {
 	severID, err = s.rdb.HGet(s.rdb.Context(), "user_status", userUUID).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {

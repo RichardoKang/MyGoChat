@@ -1,13 +1,20 @@
-package handler
+package user
 
 import (
-	"MyGoChat/internal/model"
 	"MyGoChat/pkg/common/request"
 	"MyGoChat/pkg/common/response"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
+
+type Handler struct {
+	service Service
+}
+
+func NewHandler(s Service) *Handler {
+	return &Handler{service: s}
+}
 
 func (h *Handler) Register(c *gin.Context) {
 	var req request.UserRegisterRequest
@@ -17,7 +24,7 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
-	user := model.User{
+	user := User{
 		Username: req.Username,
 		Password: req.Password,
 	}
@@ -28,7 +35,7 @@ func (h *Handler) Register(c *gin.Context) {
 		Avatar:   user.Avatar,
 	}
 
-	token, err := h.UserService.Register(&user)
+	token, err := h.service.Register(&user)
 	if err != nil {
 		c.JSON(http.StatusOK, response.FailMsg(err.Error()))
 		return
@@ -45,7 +52,7 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	user := model.User{
+	user := User{
 		Username: req.Username,
 		Password: req.Password,
 	}
@@ -56,7 +63,7 @@ func (h *Handler) Login(c *gin.Context) {
 		Avatar:   user.Avatar,
 	}
 
-	token, err := h.UserService.Login(&user)
+	token, err := h.service.Login(&user)
 	// 处理返回...
 	if err != nil {
 		c.JSON(http.StatusOK, response.FailMsg(err.Error()))
@@ -73,7 +80,7 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
-	user := model.User{
+	user := User{
 		Nickname: req.Nickname,
 		Email:    req.Email,
 		Avatar:   req.Avatar,
@@ -87,7 +94,7 @@ func (h *Handler) Update(c *gin.Context) {
 	}
 	userUuid := value.(string)
 
-	err := h.UserService.Update(&user, userUuid)
+	err := h.service.Update(&user, userUuid)
 	if err != nil {
 		c.JSON(http.StatusOK, response.FailMsg(err.Error()))
 		return

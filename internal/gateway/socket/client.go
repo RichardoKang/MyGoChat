@@ -24,7 +24,7 @@ const (
 // Client 是一个中间人，代表一个连接到服务器的用户。
 type Client struct {
 	hub      *Hub
-	conn     *websocket.Conn // 与客户端的 WebSocket 连接
+	conn     *websocket.Conn
 	send     chan []byte
 	userUUID string
 }

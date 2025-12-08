@@ -1,9 +1,11 @@
 package main
 
 import (
-	"MyGoChat/internal/logic/data"
-	"MyGoChat/internal/logic/server"
-	"MyGoChat/internal/logic/service"
+	"MyGoChat/internal/chat"
+	"MyGoChat/internal/group"
+	"MyGoChat/internal/platform"
+	"MyGoChat/internal/server"
+	"MyGoChat/internal/user"
 	"MyGoChat/pkg/config"
 	mq "MyGoChat/pkg/kafka"
 	"MyGoChat/pkg/log"
@@ -18,23 +20,23 @@ func main() {
 	log.Logger.Info("start server", log.String("start", "start web server..."))
 
 	// Init Data
-	dataObj, cleanup, err := data.NewData(cfg)
+	dataObj, cleanup, err := platform.NewData(cfg)
 	if err != nil {
 		panic(err)
 	}
 	defer cleanup()
 
-	userRepo := data.NewUserRepo(dataObj)
-	groupRepo := data.NewGroupRepo(dataObj)
-	convRepo := data.NewConversationRepo(dataObj)
-	msgRepo := data.NewMessageRepo(dataObj)
+	userRepo := user.NewUserRepo(dataObj)
+	groupRepo := group.NewGroupRepo(dataObj)
+	convRepo := chat.NewConversationRepo(dataObj)
+	msgRepo := chat.NewMessageRepo(dataObj)
 
 	// Init Services
-	userService := service.NewUserService(userRepo, dataObj.GetRedisClient())
-	groupService := service.NewGroupService(groupRepo, userRepo)
+	userService := user.NewUserService(userRepo, dataObj.GetRedisClient())
+	groupService := group.NewGroupService(groupRepo, userRepo)
 	// 使用 RedisManager 提供更强大的 Redis 操作
-	messageService := service.NewMessageService(msgRepo, convRepo, groupRepo, dataObj.GetRedisClient(), mq.InitProducer())
-	convService := service.NewConversationService(convRepo)
+	messageService := chat.NewMessageService(msgRepo, convRepo, groupRepo, dataObj.GetRedisClient(), mq.InitProducer())
+	convService := chat.NewConversationService(convRepo)
 
 	kafkaProducer := mq.InitProducer()
 	defer kafkaProducer.CloseProducer()

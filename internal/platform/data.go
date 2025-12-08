@@ -1,4 +1,4 @@
-package data
+package platform
 
 import (
 	"MyGoChat/pkg/config"
@@ -23,13 +23,15 @@ type Data struct {
 }
 
 func NewData(cfg config.YamlConfig) (*Data, func(), error) {
+	mdb := initMongoDB(cfg)
 	rdb := initRedisDB(cfg)
+	db := initPostgresDB(cfg)
 
 	data := &Data{
-		Mdb:          initMongoDB(cfg),
+		Mdb:          mdb,
 		Rdb:          rdb,
 		RedisManager: NewRedisManager(rdb),
-		Db:           initPostgresDB(cfg),
+		Db:           db,
 	}
 
 	// 启动 Redis 健康检查 (每5分钟检查一次)

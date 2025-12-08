@@ -1,7 +1,8 @@
-package handler
+package chat
 
 import (
 	pb "MyGoChat/api/v1"
+	"MyGoChat/pkg/common/request"
 	"MyGoChat/pkg/common/response"
 	"MyGoChat/pkg/config"
 	"MyGoChat/pkg/log"
@@ -16,16 +17,17 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
+type Handler struct {
+	service Service
+}
+
+func NewHandler(s Service) *Handler {
+	return &Handler{service: s}
+}
+
 // SendMessage 发送消息（私聊/群聊）
 func (h *Handler) SendMessage(c *gin.Context) {
-	var req struct {
-		ConversationID string      `json:"conversation_id"` // 可选，如果为空则自动创建
-		RecipientUUID  string      `json:"recipient_uuid"`  // 私聊时必填
-		ContentType    int32       `json:"content_type" binding:"required"`
-		Body           interface{} `json:"body" binding:"required"`
-		MessageType    int32       `json:"message_type" binding:"required"` // 1=私聊, 2=群聊
-	}
-
+	req := request.SendMessageRequest{}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, response.FailMsg("请求参数错误: "+err.Error()))
 		return
@@ -48,7 +50,7 @@ func (h *Handler) SendMessage(c *gin.Context) {
 				return
 			}
 			ctx := context.Background()
-			conv, err := h.ConvService.GetOrCreatePrivateConversation(
+			conv, err := h.service.GetOrCreatePrivateConversation(
 				ctx,
 				senderUUID.(string),
 				req.RecipientUUID,
@@ -85,7 +87,7 @@ func (h *Handler) SendMessage(c *gin.Context) {
 	}
 	msg.Body = anyBody
 
-	// 序列化并发送到 Kafka
+	// 序列化
 	msgData, err := proto.Marshal(msg)
 	if err != nil {
 		log.Logger.Sugar().Errorf("Failed to marshal message: %v", err)
@@ -95,7 +97,7 @@ func (h *Handler) SendMessage(c *gin.Context) {
 
 	// 发送到 Kafka
 	cfg := config.GetConfig()
-	kafkaProducer := h.MessageService.GetProducer()
+	kafkaProducer := h.service.GetProducer()
 	err = kafkaProducer.SendMessage(cfg.Kafka.Topics.Ingest, msgData)
 	if err != nil {
 		log.Logger.Sugar().Errorf("Failed to send to Kafka: %v", err)
@@ -191,7 +193,7 @@ func (h *Handler) GetMessageHistory(c *gin.Context) {
 	}
 
 	// 获取消息历史
-	messages, err := h.MessageService.GetMessageHistory(conversationID, limit, offset)
+	messages, err := h.service.GetMessageHistory(conversationID, limit, offset)
 	if err != nil {
 		log.Logger.Sugar().Errorf("Failed to get message history: %v", err)
 		c.JSON(http.StatusInternalServerError, response.FailMsg("获取消息历史失败"))
@@ -214,7 +216,7 @@ func (h *Handler) SyncOfflineMessages(c *gin.Context) {
 		return
 	}
 
-	err := h.MessageService.SyncOfflineMessages(userUUID.(string))
+	err := h.service.SyncOfflineMessages(userUUID.(string))
 	if err != nil {
 		log.Logger.Sugar().Errorf("Failed to sync offline messages: %v", err)
 		c.JSON(http.StatusInternalServerError, response.FailMsg("同步离线消息失败"))
@@ -235,7 +237,7 @@ func (h *Handler) MarkMessagesAsRead(c *gin.Context) {
 		return
 	}
 
-	err := h.MessageService.MarkMessagesAsRead(req.MessageIDs)
+	err := h.service.MarkMessagesAsRead(req.MessageIDs)
 	if err != nil {
 		log.Logger.Sugar().Errorf("Failed to mark messages as read: %v", err)
 		c.JSON(http.StatusInternalServerError, response.FailMsg("标记消息已读失败"))
@@ -262,7 +264,7 @@ func (h *Handler) GetConversations(c *gin.Context) {
 	}
 
 	ctx := context.Background()
-	conversations, err := h.ConvService.GetConversationsByUserID(ctx, userUUID.(string), limit)
+	conversations, err := h.service.GetConversationsByUserID(ctx, userUUID.(string), limit)
 	if err != nil {
 		log.Logger.Sugar().Errorf("Failed to get conversations: %v", err)
 		c.JSON(http.StatusInternalServerError, response.FailMsg("获取会话列表失败"))
@@ -294,7 +296,7 @@ func (h *Handler) CreatePrivateConversation(c *gin.Context) {
 	}
 
 	ctx := context.Background()
-	conversation, err := h.ConvService.GetOrCreatePrivateConversation(ctx, userUUID.(string), req.TargetUserUUID)
+	conversation, err := h.service.GetOrCreatePrivateConversation(ctx, userUUID.(string), req.TargetUserUUID)
 	if err != nil {
 		log.Logger.Sugar().Errorf("Failed to create private conversation: %v", err)
 		c.JSON(http.StatusInternalServerError, response.FailMsg("创建私聊会话失败"))
@@ -324,37 +326,8 @@ func (h *Handler) CreateGroupConversation(c *gin.Context) {
 
 	ctx := context.Background()
 
-	// 1. 验证群组是否存在
-	group, err := h.GroupService.GetGroupByGroupNumber(req.GroupNumber)
-	if err != nil {
-		log.Logger.Sugar().Errorf("Failed to get group by number: %v", err)
-		c.JSON(http.StatusNotFound, response.FailMsg("群组不存在"))
-		return
-	}
-
-	// 2. 获取群成员列表
-	groupMembers, err := h.GroupService.GetGroupMemberUUIDs(req.GroupNumber)
-	if err != nil {
-		log.Logger.Sugar().Errorf("Failed to get group members: %v", err)
-		c.JSON(http.StatusInternalServerError, response.FailMsg("获取群成员失败"))
-		return
-	}
-
-	// 3. 检查当前用户是否是群成员
-	isMember := false
-	for _, memberUUID := range groupMembers {
-		if memberUUID == userUUID.(string) {
-			isMember = true
-			break
-		}
-	}
-	if !isMember {
-		c.JSON(http.StatusForbidden, response.FailMsg("您不是该群组成员"))
-		return
-	}
-
 	// 4. 创建或获取群聊会话
-	conversation, err := h.ConvService.GetOrCreateGroupConversation(ctx, groupMembers, req.GroupNumber)
+	conversation, err := h.service.GetOrCreateGroupConversation(ctx, groupMembers, req.GroupNumber)
 	if err != nil {
 		log.Logger.Sugar().Errorf("Failed to create group conversation: %v", err)
 		c.JSON(http.StatusInternalServerError, response.FailMsg("创建群聊会话失败"))
@@ -406,7 +379,7 @@ func (h *Handler) GetConversationByGroupNumber(c *gin.Context) {
 	}
 
 	// 2. 获取群聊会话
-	conversation, err := h.ConvService.GetOrCreateGroupConversation(ctx, groupMembers, groupNumber)
+	conversation, err := h.service.GetOrCreateGroupConversation(ctx, groupMembers, groupNumber)
 	if err != nil {
 		log.Logger.Sugar().Errorf("Failed to get group conversation: %v", err)
 		c.JSON(http.StatusInternalServerError, response.FailMsg("获取群聊会话失败"))
@@ -438,7 +411,7 @@ func (h *Handler) GetConversationByUsers(c *gin.Context) {
 	}
 
 	ctx := context.Background()
-	conversation, err := h.ConvService.GetOrCreatePrivateConversation(ctx, userUUID.(string), req.TargetUserUUID)
+	conversation, err := h.service.GetOrCreatePrivateConversation(ctx, userUUID.(string), req.TargetUserUUID)
 	if err != nil {
 		log.Logger.Sugar().Errorf("Failed to get private conversation: %v", err)
 		c.JSON(http.StatusInternalServerError, response.FailMsg("获取私聊会话失败"))

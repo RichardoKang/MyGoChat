@@ -1,10 +1,22 @@
-package model
+package chat
 
 import (
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
+
+type Conversation struct {
+	ID           string   `bson:"_id"`
+	Type         int      `bson:"type"`         // 1=私聊, 2=群聊
+	Participants []string `bson:"participants"` // 存 user_id 列表
+
+	// 会话信息
+	LastMessage          interface{} `bson:"lastMessage,omitempty"` // 最后一条消息内容
+	LastMessageTimestamp int64       `bson:"lastMessageTimestamp"`  // 最后消息时间戳
+	CreatedAt            time.Time   `bson:"createdAt"`             // 会话创建时间
+	UpdatedAt            time.Time   `bson:"updatedAt"`             // 会话更新时间
+}
 
 type Message struct {
 	ID             primitive.ObjectID `bson:"_id,omitempty"`
@@ -29,9 +41,3 @@ type FileAttachment struct {
 type MessageMetadata struct {
 	ReplyToMsgID string `bson:"replyToMsgID,omitempty"` // 回复的消息 ID (用 string 存 ObjectID)
 }
-
-//// IMessageRepo 定义了消息数据的接口
-//type IMessageRepo interface {
-//	CreateMessage(ctx context.Context, msg *Message) error
-//	GetMessagesByConversationID(ctx context.Context, convID string, limit int64) ([]*Message, error)
-//}

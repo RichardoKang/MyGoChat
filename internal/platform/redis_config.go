@@ -1,4 +1,4 @@
-package data
+package platform
 
 import (
 	"MyGoChat/pkg/config"
