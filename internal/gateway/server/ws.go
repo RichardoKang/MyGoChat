@@ -2,7 +2,7 @@ package server
 
 import (
 	"MyGoChat/internal/gateway/socket"
-	"MyGoChat/internal/logic/middleware"
+	middleware2 "MyGoChat/internal/middleware"
 
 	"github.com/gin-gonic/gin"
 )
@@ -12,10 +12,10 @@ func NewGatewayRouter(hub *socket.Hub) *gin.Engine {
 	gin.SetMode(gin.DebugMode)
 	r := gin.Default()
 
-	r.Use(middleware.CORSMiddleware())
+	r.Use(middleware2.CORSMiddleware())
 
 	// WebSocket端点，使用jwt中间件验证
-	r.GET("/ws", middleware.JWTAuthMiddleware(), func(c *gin.Context) {
+	r.GET("/ws", middleware2.JWTAuthMiddleware(), func(c *gin.Context) {
 		socket.ServeWs(hub, c)
 	})
 

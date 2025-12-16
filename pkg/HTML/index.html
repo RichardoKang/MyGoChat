@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyGoChat - E2E Test Console</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <style>
+        [v-cloak] { display: none; }
+        .scrollbar-thin::-webkit-scrollbar { width: 6px; }
+        .scrollbar-thin::-webkit-scrollbar-track { background: #1f2937; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+        .toast-enter-active, .toast-leave-active { transition: all 0.3s ease; }
+        .toast-enter-from, .toast-leave-to { opacity: 0; transform: translateX(100%); }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+    <div id="app" v-cloak class="flex h-screen">
+        <!-- Toast Notifications -->
+        <div class="fixed top-4 right-4 z-50 space-y-2">
+            <transition-group name="toast">
+                <div v-for="toast in toasts" :key="toast.id"
+                     :class="['px-4 py-3 rounded-lg shadow-lg max-w-sm',
+                              toast.type === 'error' ? 'bg-red-600' :
+                              toast.type === 'success' ? 'bg-green-600' : 'bg-blue-600']">
+                    <p class="text-sm font-medium">{{ toast.message }}</p>
+                </div>
+            </transition-group>
+        </div>
+
+        <!-- Sidebar - Configuration & Auth -->
+        <aside class="w-80 bg-gray-800 border-r border-gray-700 flex flex-col">
+            <!-- Config Section -->
+            <div class="p-4 border-b border-gray-700">
+                <h2 class="text-lg font-bold text-cyan-400 mb-3">⚙️ Configuration</h2>
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">API Base URL (Logic: 8080)</label>
+                        <input v-model="config.apiBaseUrl" type="text"
+                               class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm focus:border-cyan-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">WebSocket URL (Gateway: 8081)</label>
+                        <input v-model="config.wsUrl" type="text"
+                               class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm focus:border-cyan-500 focus:outline-none">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Auth Section -->
+            <div class="p-4 border-b border-gray-700">
+                <h2 class="text-lg font-bold text-cyan-400 mb-3">🔐 Authentication</h2>
+                <div v-if="!auth.token" class="space-y-3">
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Username</label>
+                        <input v-model="auth.username" type="text" placeholder="Enter username"
+                               class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm focus:border-cyan-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Password</label>
+                        <input v-model="auth.password" type="password" placeholder="Enter password"
+                               class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm focus:border-cyan-500 focus:outline-none">
+                    </div>
+                    <div class="flex gap-2">
+                        <button @click="login" :disabled="auth.loading"
+                                class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 rounded text-sm font-medium disabled:opacity-50">
+                            {{ auth.loading ? 'Loading...' : 'Login' }}
+                        </button>
+                        <button @click="register" :disabled="auth.loading"
+                                class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-sm font-medium disabled:opacity-50">
+                            Register
+                        </button>
+                    </div>
+                </div>
+                <div v-else class="space-y-3">
+                    <div class="flex items-center gap-2 p-2 bg-green-900/30 border border-green-700 rounded">
+                        <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                        <span class="text-sm text-green-400">Logged in as: {{ auth.username }}</span>
+                    </div>
+                    <div class="text-xs text-gray-500 break-all bg-gray-700 p-2 rounded max-h-20 overflow-y-auto">
+                        Token: {{ auth.token.substring(0, 50) }}...
+                    </div>
+                    <button @click="logout" class="w-full px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm font-medium">
+                        Logout
+                    </button>
+                </div>
+            </div>
+
+            <!-- WebSocket Status -->
+            <div class="p-4 border-b border-gray-700">
+                <h2 class="text-lg font-bold text-cyan-400 mb-3">📡 WebSocket</h2>
+                <div class="flex items-center gap-2 mb-3">
+                    <span :class="['w-3 h-3 rounded-full', ws.connected ? 'bg-green-500' : 'bg-red-500']"></span>
+                    <span :class="ws.connected ? 'text-green-400' : 'text-red-400'">
+                        {{ ws.connected ? 'Connected' : 'Disconnected' }}
+                    </span>
+                </div>
+                <div class="flex gap-2">
+                    <button @click="connectWebSocket" :disabled="ws.connected || !auth.token"
+                            class="flex-1 px-3 py-2 bg-cyan-600 hover:bg-cyan-700 rounded text-sm disabled:opacity-50">
+                        Connect
+                    </button>
+                    <button @click="disconnectWebSocket" :disabled="!ws.connected"
+                            class="flex-1 px-3 py-2 bg-gray-600 hover:bg-gray-500 rounded text-sm disabled:opacity-50">
+                        Disconnect
+                    </button>
+                </div>
+            </div>
+
+            <!-- Conversations List -->
+            <div class="flex-1 p-4 overflow-hidden flex flex-col">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-lg font-bold text-cyan-400">💬 会话列表</h2>
+                    <button @click="loadConversations" :disabled="!auth.token"
+                            class="p-1 text-gray-400 hover:text-cyan-400 disabled:opacity-50">
+                        🔄
+                    </button>
+                </div>
+                <div class="flex-1 overflow-y-auto scrollbar-thin space-y-2">
+                    <div v-for="conv in conversations" :key="conv.ID"
+                         @click="selectConversation(conv)"
+                         :class="['p-3 rounded cursor-pointer transition-colors',
+                                  selectedConversation?.ID === conv.ID
+                                    ? 'bg-cyan-600'
+                                    : 'bg-gray-700 hover:bg-gray-600']">
+                        <div class="flex items-center gap-2">
+                            <span class="text-lg">{{ conv.Type === 2 ? '👥' : '👤' }}</span>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium truncate">{{ conv.TargetName || conv.TargetUUID || conv.ID.substring(0, 12) }}</p>
+                                <p class="text-xs text-gray-400">{{ conv.Type === 2 ? '群聊' : '私聊' }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-if="conversations.length === 0" class="text-center text-gray-500 py-8">
+                        <p class="text-3xl mb-2">📭</p>
+                        <p class="text-sm">暂无会话</p>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col">
+            <!-- Top Bar - Quick Actions -->
+            <div class="h-14 bg-gray-800 border-b border-gray-700 flex items-center px-4 gap-4">
+                <h1 class="text-xl font-bold text-cyan-400">MyGoChat Test Console</h1>
+                <div class="flex-1"></div>
+                <button @click="showCreateConversation = true" :disabled="!auth.token"
+                        class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-sm font-medium disabled:opacity-50">
+                    ➕ New Chat
+                </button>
+                <button @click="showAddFriend = true" :disabled="!auth.token"
+                        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm font-medium disabled:opacity-50">
+                    👥 Add Friend
+                </button>
+            </div>
+
+            <!-- Chat Area -->
+            <div class="flex-1 flex">
+                <!-- Messages Area -->
+                <div class="flex-1 flex flex-col">
+                    <div v-if="selectedConversation" class="flex-1 flex flex-col">
+                        <!-- Messages Header -->
+                        <div class="px-4 py-3 bg-gray-800/50 border-b border-gray-700">
+                            <p class="text-sm font-medium">{{ selectedConversation.Type === 2 ? '👥 群聊' : '👤 私聊' }}: {{ selectedConversation.TargetName || selectedConversation.TargetUUID }}</p>
+                        </div>
+
+                        <!-- Messages List -->
+                        <div ref="messagesContainer" class="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin">
+                            <div v-for="msg in messages" :key="msg.ID || msg.id"
+                                 :class="['max-w-[70%] p-3 rounded-lg',
+                                          (msg.SenderUUID || msg.senderUUID) === currentUserUUID
+                                            ? 'ml-auto bg-cyan-600'
+                                            : 'bg-gray-700']">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="text-xs font-medium text-cyan-300">{{ msg.SenderName || msg.senderName || (msg.SenderUUID || msg.senderUUID)?.substring(0, 8) || 'Unknown' }}</span>
+                                    <span class="text-xs text-gray-400">{{ formatTime(msg.SendAt || msg.sendAt) }}</span>
+                                </div>
+                                <p class="text-sm">{{ getMessageBody(msg) }}</p>
+                            </div>
+                            <div v-if="messages.length === 0" class="text-center text-gray-500 py-16">
+                                <p class="text-4xl mb-2">💭</p>
+                                <p>No messages yet</p>
+                            </div>
+                        </div>
+
+                        <!-- Message Input -->
+                        <div class="p-4 bg-gray-800 border-t border-gray-700">
+                            <div class="flex gap-2">
+                                <input v-model="messageForm.content" type="text" placeholder="Type a message..."
+                                       @keyup.enter="sendMessageWS"
+                                       class="flex-1 px-4 py-2 bg-gray-700 border border-gray-600 rounded text-sm focus:border-cyan-500 focus:outline-none">
+                                <button @click="sendMessageWS" :disabled="!ws.connected"
+                                        class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-sm font-medium disabled:opacity-50">
+                                    📤 发送
+                                </button>
+                            </div>
+                            <p v-if="!ws.connected" class="text-xs text-yellow-500 mt-2">⚠️ WebSocket 未连接，请先点击左侧 Connect 按钮</p>
+                        </div>
+                    </div>
+                    <div v-else class="flex-1 flex items-center justify-center text-gray-500">
+                        <div class="text-center">
+                            <p class="text-6xl mb-4">💬</p>
+                            <p class="text-xl">选择一个会话开始聊天</p>
+                            <p class="text-sm mt-2">或点击上方按钮创建新会话</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Debug Console -->
+                <div class="w-96 bg-gray-850 border-l border-gray-700 flex flex-col">
+                    <div class="px-4 py-3 bg-gray-800 border-b border-gray-700 flex items-center justify-between">
+                        <h3 class="font-bold text-yellow-400">🔧 Debug Console</h3>
+                        <button @click="debugLogs = []" class="text-xs text-gray-400 hover:text-white">Clear</button>
+                    </div>
+                    <div ref="debugContainer" class="flex-1 overflow-y-auto p-2 font-mono text-xs scrollbar-thin bg-gray-900">
+                        <div v-for="(log, index) in debugLogs" :key="index"
+                             :class="['p-2 mb-2 rounded border-l-4',
+                                      log.type === 'error' ? 'bg-red-900/30 border-red-500' :
+                                      log.type === 'ws' ? 'bg-green-900/30 border-green-500' :
+                                      log.type === 'ws-send' ? 'bg-blue-900/30 border-blue-500' :
+                                      'bg-gray-800 border-cyan-500']">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span :class="log.type === 'error' ? 'text-red-400' :
+                                              log.type === 'ws' ? 'text-green-400' :
+                                              log.type === 'ws-send' ? 'text-blue-400' : 'text-cyan-400'">
+                                    {{ log.type === 'ws' ? '📥 WS IN' :
+                                       log.type === 'ws-send' ? '📤 WS OUT' :
+                                       log.type === 'error' ? '❌ ERROR' : '📡 HTTP' }}
+                                </span>
+                                <span class="text-gray-500">{{ log.timestamp }}</span>
+                            </div>
+                            <div class="text-gray-300 break-all whitespace-pre-wrap">{{ log.method ? `${log.method} ${log.url}` : '' }}</div>
+                            <pre class="text-gray-400 mt-1 overflow-x-auto">{{ typeof log.data === 'object' ? JSON.stringify(log.data, null, 2) : log.data }}</pre>
+                        </div>
+                        <div v-if="debugLogs.length === 0" class="text-gray-500 text-center py-8">
+                            No logs yet...
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Modal: Create Conversation -->
+        <div v-if="showCreateConversation" class="fixed inset-0 bg-black/50 flex items-center justify-center z-40">
+            <div class="bg-gray-800 rounded-lg p-6 w-96 border border-gray-700">
+                <h3 class="text-lg font-bold text-cyan-400 mb-4">Create Private Conversation</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Target User UUID</label>
+                        <input v-model="createConvForm.targetUserUUID" type="text" placeholder="Enter target user UUID"
+                               class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm focus:border-cyan-500 focus:outline-none">
+                    </div>
+                    <div class="flex gap-2">
+                        <button @click="createPrivateConversation" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 rounded text-sm font-medium">
+                            Create
+                        </button>
+                        <button @click="showCreateConversation = false" class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded text-sm font-medium">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Add Friend -->
+        <div v-if="showAddFriend" class="fixed inset-0 bg-black/50 flex items-center justify-center z-40">
+            <div class="bg-gray-800 rounded-lg p-6 w-96 border border-gray-700">
+                <h3 class="text-lg font-bold text-cyan-400 mb-4">Add Friend</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Your Username (username1)</label>
+                        <input v-model="addFriendForm.username" type="text" placeholder="Your username"
+                               class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm focus:border-cyan-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Friend's Username (username2)</label>
+                        <input v-model="addFriendForm.friendUsername" type="text" placeholder="Friend's username"
+                               class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm focus:border-cyan-500 focus:outline-none">
+                    </div>
+                    <div class="flex gap-2">
+                        <button @click="addFriend" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 rounded text-sm font-medium">
+                            Add Friend
+                        </button>
+                        <button @click="showAddFriend = false" class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded text-sm font-medium">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    const { createApp, ref, reactive, computed, watch, onMounted, nextTick } = Vue;
+
+    createApp({
+        setup() {
+            // ==================== State ====================
+            const config = reactive({
+                apiBaseUrl: localStorage.getItem('apiBaseUrl') || 'http://localhost:8080',
+                wsUrl: localStorage.getItem('wsUrl') || 'ws://localhost:8081/ws'
+            });
+
+            const auth = reactive({
+                username: '',
+                password: '',
+                token: localStorage.getItem('token') || '',
+                loading: false
+            });
+
+            const ws = reactive({
+                socket: null,
+                connected: false
+            });
+
+            const conversations = ref([]);
+            const selectedConversation = ref(null);
+            const messages = ref([]);
+            const debugLogs = ref([]);
+            const toasts = ref([]);
+
+            const messageForm = reactive({
+                content: '',
+                targetName: '',
+                messageType: 1,
+                contentType: 1
+            });
+
+            const showCreateConversation = ref(false);
+            const showAddFriend = ref(false);
+            const createConvForm = reactive({ targetUserUUID: '' });
+            const addFriendForm = reactive({ username: '', friendUsername: '' });
+
+            const messagesContainer = ref(null);
+            const debugContainer = ref(null);
+
+            // ==================== Computed ====================
+            const currentUserUUID = computed(() => {
+                if (!auth.token) return '';
+                try {
+                    const payload = JSON.parse(atob(auth.token.split('.')[1]));
+                    return payload.useruuid || '';
+                } catch {
+                    return '';
+                }
+            });
+
+            // ==================== Watchers ====================
+            watch(() => config.apiBaseUrl, (val) => localStorage.setItem('apiBaseUrl', val));
+            watch(() => config.wsUrl, (val) => localStorage.setItem('wsUrl', val));
+
+            // ==================== Methods ====================
+            const showToast = (message, type = 'info') => {
+                const id = Date.now();
+                toasts.value.push({ id, message, type });
+                setTimeout(() => {
+                    toasts.value = toasts.value.filter(t => t.id !== id);
+                }, 3000);
+            };
+
+            const addDebugLog = (type, data, method = '', url = '') => {
+                const timestamp = new Date().toLocaleTimeString();
+                debugLogs.value.unshift({ type, data, method, url, timestamp });
+                if (debugLogs.value.length > 100) debugLogs.value.pop();
+            };
+
+            const apiRequest = async (method, path, data = null) => {
+                const url = `${config.apiBaseUrl}${path}`;
+                const headers = { 'Content-Type': 'application/json' };
+                if (auth.token) headers['Authorization'] = `Bearer ${auth.token}`;
+
+                try {
+                    const response = await axios({ method, url, data, headers });
+                    addDebugLog('http', response.data, method.toUpperCase(), path);
+                    return response.data;
+                } catch (error) {
+                    const errData = error.response?.data || { msg: error.message };
+                    addDebugLog('error', errData, method.toUpperCase(), path);
+                    throw error;
+                }
+            };
+
+            const login = async () => {
+                auth.loading = true;
+                try {
+                    const res = await apiRequest('post', '/api/user/login', {
+                        username: auth.username,
+                        password: auth.password
+                    });
+                    if (res.code === 0 && res.data?.token) {
+                        auth.token = res.data.token;
+                        localStorage.setItem('token', res.data.token);
+                        showToast('Login successful!', 'success');
+                        await loadConversations();
+                    } else {
+                        showToast(res.msg || 'Login failed', 'error');
+                    }
+                } catch (e) {
+                    showToast('Login failed: ' + (e.response?.data?.msg || e.message), 'error');
+                } finally {
+                    auth.loading = false;
+                }
+            };
+
+            const register = async () => {
+                auth.loading = true;
+                try {
+                    const res = await apiRequest('post', '/api/user/register', {
+                        username: auth.username,
+                        password: auth.password
+                    });
+                    if (res.code === 0 && res.data?.token) {
+                        auth.token = res.data.token;
+                        localStorage.setItem('token', res.data.token);
+                        showToast('Registration successful!', 'success');
+                    } else {
+                        showToast(res.msg || 'Registration failed', 'error');
+                    }
+                } catch (e) {
+                    showToast('Registration failed: ' + (e.response?.data?.msg || e.message), 'error');
+                } finally {
+                    auth.loading = false;
+                }
+            };
+
+            const logout = () => {
+                auth.token = '';
+                auth.username = '';
+                auth.password = '';
+                localStorage.removeItem('token');
+                conversations.value = [];
+                selectedConversation.value = null;
+                messages.value = [];
+                disconnectWebSocket();
+                showToast('Logged out', 'info');
+            };
+
+            const loadConversations = async () => {
+                try {
+                    const res = await apiRequest('get', '/api/message/conversations');
+                    if (res.code === 0) {
+                        conversations.value = res.data?.conversations || [];
+                    }
+                } catch (e) {
+                    console.error('Failed to load conversations:', e);
+                }
+            };
+
+            const selectConversation = async (conv) => {
+                selectedConversation.value = conv;
+                await loadHistory(conv.ID);
+            };
+
+            const loadHistory = async (conversationId) => {
+                try {
+                    const res = await apiRequest('get', `/api/message/history/${conversationId}?limit=50&offset=0`);
+                    if (res.code === 0) {
+                        messages.value = res.data?.messages || [];
+                        await nextTick();
+                        if (messagesContainer.value) {
+                            messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to load history:', e);
+                }
+            };
+
+            const sendMessageHTTP = async () => {
+                if (!messageForm.content.trim() || !messageForm.targetName.trim()) {
+                    showToast('Please enter message content and target name', 'error');
+                    return;
+                }
+
+                try {
+                    const body = messageForm.contentType === 1
+                        ? { content: messageForm.content }
+                        : { url: messageForm.content, fileName: 'file', size: 0, mimeType: 'application/octet-stream' };
+
+                    const payload = {
+                        target_name: messageForm.targetName,
+                        message_type: messageForm.messageType,
+                        content_type: messageForm.contentType,
+                        body: body
+                    };
+
+                    if (selectedConversation.value) {
+                        payload.conversation_id = selectedConversation.value.ID;
+                    }
+
+                    const res = await apiRequest('post', '/api/message/send', payload);
+                    if (res.code === 0) {
+                        showToast('Message sent!', 'success');
+                        messageForm.content = '';
+                        if (selectedConversation.value) {
+                            await loadHistory(selectedConversation.value.ID);
+                        }
+                    } else {
+                        showToast(res.msg || 'Failed to send message', 'error');
+                    }
+                } catch (e) {
+                    showToast('Failed to send: ' + (e.response?.data?.msg || e.message), 'error');
+                }
+            };
+
+            const sendMessageWS = () => {
+                if (!ws.socket || !ws.connected) {
+                    showToast('请先连接 WebSocket', 'error');
+                    return;
+                }
+                if (!messageForm.content.trim()) {
+                    showToast('请输入消息内容', 'error');
+                    return;
+                }
+                if (!selectedConversation.value) {
+                    showToast('请先选择一个会话', 'error');
+                    return;
+                }
+
+                // 从 selectedConversation 自动获取会话类型和目标 UUID
+                const conv = selectedConversation.value;
+                const messageType = conv.Type || 1; // 1=私聊, 2=群聊
+                const recipientUUID = conv.TargetUUID;
+
+                if (!recipientUUID) {
+                    showToast('会话数据异常，缺少目标用户', 'error');
+                    return;
+                }
+
+                const msg = {
+                    conversationID: conv.ID,
+                    recipientUUID: recipientUUID,
+                    messageType: messageType,
+                    contentType: 1, // 默认文本消息
+                    body: { content: messageForm.content },
+                    sendAt: Math.floor(Date.now() / 1000)
+                };
+
+                addDebugLog('ws-send', msg);
+                ws.socket.send(JSON.stringify(msg));
+                messageForm.content = '';
+                showToast('消息已发送', 'success');
+
+                // 刷新历史消息
+                if (selectedConversation.value) {
+                    setTimeout(() => loadHistory(selectedConversation.value.ID), 500);
+                }
+            };
+
+            const connectWebSocket = () => {
+                if (!auth.token) {
+                    showToast('Please login first', 'error');
+                    return;
+                }
+
+                const url = `${config.wsUrl}?token=${auth.token}`;
+                addDebugLog('http', `Connecting to ${url}`, 'WS', config.wsUrl);
+
+                try {
+                    ws.socket = new WebSocket(url);
+
+                    ws.socket.onopen = () => {
+                        ws.connected = true;
+                        showToast('WebSocket connected!', 'success');
+                        addDebugLog('ws', 'Connection established');
+                    };
+
+                    ws.socket.onmessage = async (event) => {
+                        try {
+                            let data;
+
+                            // Check if data is Blob (binary)
+                            if (event.data instanceof Blob) {
+                                // Convert Blob to ArrayBuffer then to text for display
+                                const arrayBuffer = await event.data.arrayBuffer();
+                                const uint8Array = new Uint8Array(arrayBuffer);
+
+                                // Try to decode as UTF-8 text first (might be JSON wrapped in binary)
+                                try {
+                                    const textDecoder = new TextDecoder('utf-8');
+                                    const text = textDecoder.decode(uint8Array);
+
+                                    // Try to parse as JSON
+                                    try {
+                                        data = JSON.parse(text);
+                                        addDebugLog('ws', data);
+                                    } catch {
+                                        // Not JSON, show as text
+                                        addDebugLog('ws', `Text: ${text}`);
+                                        return;
+                                    }
+                                } catch {
+                                    // Can't decode as text, show as hex dump
+                                    const hexString = Array.from(uint8Array)
+                                        .map(b => b.toString(16).padStart(2, '0'))
+                                        .join(' ');
+                                    addDebugLog('ws', `Binary (${uint8Array.length} bytes): ${hexString.substring(0, 200)}${hexString.length > 200 ? '...' : ''}`);
+
+                                    // Try to extract readable fields from protobuf
+                                    // Simple heuristic: look for readable ASCII strings
+                                    const readableChars = Array.from(uint8Array)
+                                        .filter(b => b >= 32 && b <= 126)
+                                        .map(b => String.fromCharCode(b))
+                                        .join('');
+                                    if (readableChars.length > 10) {
+                                        addDebugLog('ws', `Readable parts: ${readableChars}`);
+                                    }
+                                    return;
+                                }
+                            } else if (typeof event.data === 'string') {
+                                // Try to parse as JSON
+                                try {
+                                    data = JSON.parse(event.data);
+                                    addDebugLog('ws', data);
+                                } catch {
+                                    addDebugLog('ws', `Text: ${event.data}`);
+                                    return;
+                                }
+                            } else {
+                                addDebugLog('ws', `Unknown data type: ${typeof event.data}`);
+                                return;
+                            }
+
+                            // If we got parsed data and it's a message for current conversation, add it
+                            if (data && selectedConversation.value) {
+                                const convID = data.conversationID || data.ConversationID;
+                                if (convID === selectedConversation.value.ID) {
+                                    messages.value.push(data);
+                                    nextTick(() => {
+                                        if (messagesContainer.value) {
+                                            messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
+                                        }
+                                    });
+                                    showToast('New message received!', 'success');
+                                }
+                            }
+                        } catch (err) {
+                            // Log any errors
+                            addDebugLog('error', `Failed to process WS message: ${err.message}`);
+                        }
+                    };
+
+                    ws.socket.onerror = (error) => {
+                        addDebugLog('error', 'WebSocket error occurred');
+                        showToast('WebSocket error', 'error');
+                    };
+
+                    ws.socket.onclose = (event) => {
+                        ws.connected = false;
+                        addDebugLog('ws', `Connection closed: ${event.code} ${event.reason}`);
+                        showToast('WebSocket disconnected', 'info');
+                    };
+                } catch (e) {
+                    showToast('Failed to connect WebSocket: ' + e.message, 'error');
+                }
+            };
+
+            const disconnectWebSocket = () => {
+                if (ws.socket) {
+                    ws.socket.close();
+                    ws.socket = null;
+                    ws.connected = false;
+                }
+            };
+
+            const createPrivateConversation = async () => {
+                if (!createConvForm.targetUserUUID.trim()) {
+                    showToast('Please enter target user UUID', 'error');
+                    return;
+                }
+
+                try {
+                    const res = await apiRequest('post', '/api/message/conversation/private', {
+                        target_user_uuid: createConvForm.targetUserUUID
+                    });
+                    if (res.code === 0) {
+                        showToast('Conversation created!', 'success');
+                        showCreateConversation.value = false;
+                        createConvForm.targetUserUUID = '';
+                        await loadConversations();
+                    } else {
+                        showToast(res.msg || 'Failed to create conversation', 'error');
+                    }
+                } catch (e) {
+                    showToast('Failed: ' + (e.response?.data?.msg || e.message), 'error');
+                }
+            };
+
+            const addFriend = async () => {
+                if (!addFriendForm.username.trim() || !addFriendForm.friendUsername.trim()) {
+                    showToast('Please fill all fields', 'error');
+                    return;
+                }
+
+                try {
+                    const res = await apiRequest('post', '/api/relations/add-friend', {
+                        username1: addFriendForm.username,
+                        username2: addFriendForm.friendUsername
+                    });
+                    showToast('Friend added successfully!', 'success');
+                    showAddFriend.value = false;
+                    addFriendForm.username = '';
+                    addFriendForm.friendUsername = '';
+                } catch (e) {
+                    showToast('Failed: ' + (e.response?.data?.error || e.message), 'error');
+                }
+            };
+
+            const formatTime = (timestamp) => {
+                if (!timestamp) return '';
+                const date = new Date(timestamp * 1000);
+                return date.toLocaleString();
+            };
+
+            const getMessageBody = (msg) => {
+                // 支持大写和小写字段名（HTTP API vs WebSocket）
+                const body = msg.Body || msg.body;
+                if (!body) return '[No content]';
+                if (typeof body === 'string') return body;
+                if (body.content) return body.content;
+                if (body.url) return `[File: ${body.fileName || body.url}]`;
+                return JSON.stringify(body);
+            };
+
+            // ==================== Lifecycle ====================
+            onMounted(() => {
+                if (auth.token) {
+                    loadConversations();
+                }
+            });
+
+            return {
+                config,
+                auth,
+                ws,
+                conversations,
+                selectedConversation,
+                messages,
+                debugLogs,
+                toasts,
+                messageForm,
+                showCreateConversation,
+                showAddFriend,
+                createConvForm,
+                addFriendForm,
+                messagesContainer,
+                debugContainer,
+                currentUserUUID,
+                login,
+                register,
+                logout,
+                loadConversations,
+                selectConversation,
+                sendMessageHTTP,
+                sendMessageWS,
+                connectWebSocket,
+                disconnectWebSocket,
+                createPrivateConversation,
+                addFriend,
+                formatTime,
+                getMessageBody
+            };
+        }
+    }).mount('#app');
+    </script>
+</body>
+</html>
+

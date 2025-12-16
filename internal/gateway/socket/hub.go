@@ -38,33 +38,43 @@ func NewHub(producer *myKafka.Producer, redisClient *redis.Client, gatewayID str
 	}
 }
 
-// DispatchMessage 是 Kafka 处理器
-func (h *Hub) DispatchMessage(kafkaMsg kafka.Message) {
+// DispatchMessage 是 Kafka Delivery Topic 的消息处理器
+// 消息流程： Logic Service -> Kafka (Delivery Topic) -> Gateway Consumer -> DispatchMessage -> Client.send -> writePump -> WebSocket
+func (h *Hub) DispatchMessage(_ context.Context, kafkaMsg kafka.Message) error {
+	// Step 1: 反序列化 Protobuf 消息
 	var msg pb.Message
 	if err := proto.Unmarshal(kafkaMsg.Value, &msg); err != nil {
 		log.Logger.Sugar().Errorf("DispatchMessage: 反序列化失败: %v", err)
-		return
+		return err
 	}
 
-	// 获取消息的接收者UUID
+	// Step 2: 获取消息的目标接收者
 	recipientUUID := msg.RecipientUUID
 	if recipientUUID == "" {
 		log.Logger.Sugar().Warnf("DispatchMessage: 消息缺少接收者UUID")
-		return
+		return nil
 	}
 
-	// 查找接收者客户端连接
+	// Step 3: 将 Protobuf 消息转换为 JSON 格式，方便前端解析
+	jsonMsg, err := convertProtoToJSON(&msg)
+	if err != nil {
+		log.Logger.Sugar().Errorf("DispatchMessage: 转换JSON失败: %v", err)
+		return err
+	}
+
+	// Step 4: 在本 Gateway 的客户端连接池中查找接收者
+	// 使用读锁保护并发访问 clients map
 	h.mu.RLock()
 	recipientClient, ok := h.clients[recipientUUID]
 	h.mu.RUnlock()
 
 	if ok {
-		// 用户在线，直接推送
+		// Step 5a: 用户在本 Gateway 在线，通过 channel 推送到 writePump
+		// writePump 会将消息通过 WebSocket 发送给客户端
 		select {
-		case recipientClient.send <- kafkaMsg.Value:
-			log.Logger.Sugar().Debugf("Dispatched message to user %s: %s", recipientUUID, string(kafkaMsg.Value))
+		case recipientClient.send <- jsonMsg:
+			log.Logger.Sugar().Debugf("Dispatched message to user %s", recipientUUID)
 		default:
-			// 客户端 channel 满了，关闭连接
 			log.Logger.Sugar().Infof("Client channel full, closing connection: %s", recipientUUID)
 			h.mu.Lock()
 			close(recipientClient.send)
@@ -72,23 +82,76 @@ func (h *Hub) DispatchMessage(kafkaMsg kafka.Message) {
 			h.mu.Unlock()
 		}
 	} else {
-		// 用户在此网关不在线 (可能在别的网关，或已离线)
+		// Step 5b: 用户不在本 Gateway 上
 		log.Logger.Sugar().Debugf("User not connected to this gateway: %s", recipientUUID)
 	}
+
+	return nil
 }
 
-// Run 只负责注册/注销
+// convertProtoToJSON 将 Protobuf Message 转换为 JSON 格式
+// 用于发送给 WebSocket 客户端，方便前端解析
+func convertProtoToJSON(msg *pb.Message) ([]byte, error) {
+	// 构建一个前端友好的 JSON 结构
+	jsonData := map[string]interface{}{
+		"id":             msg.Id,
+		"conversationID": msg.ConversationID,
+		"senderUUID":     msg.SenderUUID,
+		"recipientUUID":  msg.RecipientUUID,
+		"sendAt":         msg.SendAt,
+		"contentType":    msg.ContentType,
+		"messageType":    msg.MessageType,
+		"senderName":     msg.SenderName,
+		"avatar":         msg.Avatar,
+	}
+
+	// 解包 Body 字段
+	if msg.Body != nil {
+		switch msg.ContentType {
+		case 1: // Text
+			var textBody pb.TextBody
+			if err := msg.Body.UnmarshalTo(&textBody); err == nil {
+				jsonData["body"] = map[string]interface{}{
+					"content": textBody.Content,
+				}
+			}
+		case 2, 3, 4: // Image, File, Voice
+			var fileBody pb.FileAttachment
+			if err := msg.Body.UnmarshalTo(&fileBody); err == nil {
+				jsonData["body"] = map[string]interface{}{
+					"url":      fileBody.Url,
+					"fileName": fileBody.FileName,
+					"size":     fileBody.Size,
+					"mimeType": fileBody.MimeType,
+				}
+			}
+		}
+	}
+
+	return json.Marshal(jsonData)
+}
+
+// Run 运行 Hub 的主循环，负责客户端连接的注册和注销
+// 这是一个长期运行的 goroutine，通过 channel 接收注册/注销请求
+//
+// 核心职责：
+// 1. 维护本 Gateway 的客户端连接池 (clients map)
+// 2. 在 Redis 中维护用户路由表 (user_gateway:{uuid} -> gatewayID)
+// 3. 处理用户上线/下线事件
 func (h *Hub) Run() {
 	log.Logger.Info("WebSocket Hub started")
 
 	for {
 		select {
 		case client := <-h.register:
+			// 用户连接：注册到本地连接池
 			h.mu.Lock()
 			h.clients[client.userUUID] = client
 			h.mu.Unlock()
 
-			// 在 Redis 中注册用户在线状态
+			// 【关键】在 Redis 中注册用户路由信息
+			// Logic 服务通过查询这个 key 来确定消息应该投递到哪个 Gateway
+			// Key: user_gateway:{userUUID}, Value: gatewayID
 			if h.redis != nil {
 				err := h.redis.Set(h.ctx, "user_gateway:"+client.userUUID, h.gatewayID, 0).Err()
 				if err != nil {
@@ -96,9 +159,10 @@ func (h *Hub) Run() {
 				}
 			}
 
-			log.Logger.Sugar().Infof("Client connected: %s", client.userUUID)
+			log.Logger.Sugar().Infof("Client connected: %s on gateway %s", client.userUUID, h.gatewayID)
 
 		case client := <-h.unregister:
+			// 用户断开：从本地连接池移除
 			h.mu.Lock()
 			if _, ok := h.clients[client.userUUID]; ok {
 				delete(h.clients, client.userUUID)
@@ -106,7 +170,8 @@ func (h *Hub) Run() {
 			}
 			h.mu.Unlock()
 
-			// 从 Redis 中移除用户在线状态
+			// 从 Redis 中移除用户路由信息
+			// 这样 Logic 服务就知道用户已离线，会将消息存入离线队列
 			if h.redis != nil {
 				err := h.redis.Del(h.ctx, "user_gateway:"+client.userUUID).Err()
 				if err != nil {

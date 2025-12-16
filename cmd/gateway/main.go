@@ -34,14 +34,12 @@ func main() {
 	go hub.Run()
 	defer hub.Stop()
 
-	// 【新增】启动 Gateway 自己的消费者, 处理来自 Logic Service 的消息
+	// kafka producer负责监控 Kafka topic为 Delivery+gatewayID 的消息，把消息分发到对应的client
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	deliveryTopic := cfg.Kafka.Topics.Delivery + gatewayID
 	consumer := mq.InitConsumer(deliveryTopic, deliveryTopic)
-
-	// 【关键】: 将 hub.DispatchMessage 作为处理器
 	go mq.StartConsumer(ctx, consumer, hub.DispatchMessage)
 
 	newRouter := gwServer.NewGatewayRouter(hub)

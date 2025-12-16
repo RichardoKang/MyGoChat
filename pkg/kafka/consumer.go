@@ -2,8 +2,8 @@ package kafka
 
 import (
 	"MyGoChat/pkg/config"
+	"MyGoChat/pkg/log"
 	"context"
-	"sync"
 
 	"github.com/segmentio/kafka-go"
 )
@@ -25,34 +25,42 @@ func InitConsumer(topic, groupID string) Consumer {
 
 }
 
-// StartConsumer 启动一个Kafka消费者，持续读取消息并通过handler处理。
-func StartConsumer(ctx context.Context, r Consumer, handler func(kafka.Message)) (stop func(), done <-chan struct{}) {
-	var once sync.Once
-	d := make(chan struct{})
-	go func() {
-		defer close(d)
-		for {
-			select {
-			case <-ctx.Done():
-				// 当上下文被取消时，关闭消费者并退出
-				once.Do(func() { r.Close() })
-				return
-			default:
-				m, err := r.ReadMessage(ctx)
-				if err != nil {
-					if ctx.Err() != nil {
-						// 上下文取消，优雅退出
-						once.Do(func() { r.Close() })
-						return
-					}
-					// 临时错误：记录并继续/重试
-					continue
-				}
-				handler(m)
-			}
+type MessageHandler func(ctx context.Context, msg kafka.Message) error
+
+// StartConsumer 阻塞式消费者
+// 建议加上 error 返回值以便 Handler 能够反馈处理结果
+func StartConsumer(ctx context.Context, r Consumer, handler MessageHandler) {
+	defer func() {
+		if err := r.Close(); err != nil {
+			log.Logger.Sugar().Errorf("Error closing consumer: %v", err)
 		}
 	}()
-	// 返回一个停止函数，用于关闭消费者
-	stop = func() { once.Do(func() { r.Close() }) }
-	return stop, d
+
+	log.Logger.Sugar().Info("Kafka consumer started")
+
+	for {
+		// 1. 检查上下文是否已取消 (避免在关闭时还在拉取新消息)
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		// 2. 读取消息
+		m, err := r.ReadMessage(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return // 上下文取消导致的错误，直接退出
+			}
+			log.Logger.Sugar().Errorf("Error reading message: %v", err)
+			continue
+		}
+
+		// 3. 【关键】将 ctx 传递给 Handler
+		// 这样 Handler 内部的 DB 操作就能感知到 main 函数的关闭信号了
+		if err := handler(ctx, m); err != nil {
+			log.Logger.Sugar().Errorf("Handler failed: %v", err)
+			// TODO: 这里可以根据 error 类型决定是否需要重试或提交偏移量
+		}
+	}
 }

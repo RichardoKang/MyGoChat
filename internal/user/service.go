@@ -1,0 +1,117 @@
+package user
+
+import (
+	"MyGoChat/internal/util"
+	"MyGoChat/pkg/log"
+	"MyGoChat/pkg/token"
+	"context"
+	"errors"
+	"time"
+
+	"github.com/go-redis/redis/v8"
+	"github.com/google/uuid"
+)
+
+type Service struct {
+	repo Repository
+	rdb  *redis.Client
+}
+
+func NewService(repo Repository, rdb *redis.Client) *Service {
+	return &Service{repo: repo, rdb: rdb}
+}
+
+func (s *Service) Register(user *User) (string, error) {
+	logger := log.Logger
+
+	hashedPassword, err := util.HashPassword(user.Password)
+	if err != nil {
+		logger.Sugar().Errorf("user_service: Password hashing error: %v", err)
+		return "", err
+	}
+
+	user.Password = hashedPassword
+
+	// 固定uuid为5位字符
+	user.Uuid = uuid.New().String()[:5]
+	user.CreateAt = time.Now()
+
+	if err := s.repo.Create(user); err != nil {
+		logger.Sugar().Errorf("user_service: CreateMsg user error: %v", err)
+		return "", err
+	}
+
+	logger.Sugar().Infof("user_service: User registered successfully: %v", user.Username)
+
+	// Generate JWT token
+	tokenString, err := token.GenerateToken(user.Uuid, user.Username)
+	if err != nil {
+		logger.Sugar().Errorf("user_service: Failed to generate token for user %s: %v", user.Username, err)
+		return "", err
+	}
+
+	logger.Sugar().Infof("user_service: User %s registered and token generated", user.Username)
+
+	return tokenString, nil
+}
+
+func (s *Service) Login(user *User) (string, error) {
+	dbUser, err := s.repo.GetUserByUsername(user.Username)
+	if err != nil {
+		return "", err
+	}
+
+	if res := util.ComparePassword(dbUser.Password, user.Password); res != true {
+		return "", errors.New("invalid password")
+	}
+
+	// Generate JWT token
+	tokenString, err := token.GenerateToken(dbUser.Uuid, dbUser.Username)
+	if err != nil {
+		log.Logger.Sugar().Errorf("user_service: Failed to generate token for user %s: %v", user.Username, err)
+		return "", err
+	}
+
+	return tokenString, nil
+}
+
+func (s *Service) Update(user *User, userUuid string) error {
+	user.Uuid = userUuid
+
+	if user.Uuid == "" {
+		return errors.New("invalid user data")
+	}
+
+	if user.Password != "" {
+		hashed, err := util.HashPassword(user.Password)
+		if err != nil {
+			return err
+		}
+		user.Password = hashed
+	}
+
+	return s.repo.Update(user)
+}
+
+func (s *Service) GetUserByUuid(uuid string) (*User, error) {
+	return s.repo.GetUserByUuid(uuid)
+}
+
+func (s *Service) GetUserByID(id uint) (*User, error) {
+	return s.repo.GetUserByID(id)
+}
+
+func (s *Service) GetUserStatus(userUUID string) (severID string, isOnline bool, err error) {
+	severID, err = s.rdb.HGet(s.rdb.Context(), "user_status", userUUID).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	return severID, true, nil
+}
+
+func (s *Service) GetUserUUID(ctx context.Context, username string) (string, error) {
+	return s.repo.GetUUIDByUsername(ctx, username)
+}

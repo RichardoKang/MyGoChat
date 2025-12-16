@@ -24,7 +24,7 @@ const (
 // Client 是一个中间人，代表一个连接到服务器的用户。
 type Client struct {
 	hub      *Hub
-	conn     *websocket.Conn // 与客户端的 WebSocket 连接
+	conn     *websocket.Conn
 	send     chan []byte
 	userUUID string
 }
@@ -67,7 +67,10 @@ func (c *Client) readPump() {
 			continue
 		}
 
-		// 设置发送者UUID
+		// 【安全关键】强制覆盖 SenderUUID
+		// 无论客户端发送什么 SenderUUID，都必须使用当前连接经过 JWT 鉴权后获取的真实用户 UUID
+		// 这是防止用户伪造发送者身份的关键安全措施
+		// c.userUUID 是在 WebSocket 握手时从 JWT token 中解析出来的，是可信的
 		msg.SenderUUID = c.userUUID
 
 		// 序列化为protobuf发送给Kafka
@@ -77,12 +80,16 @@ func (c *Client) readPump() {
 			continue
 		}
 
+		// 发送到 Kafka Ingest Topic，由 Logic 服务消费处理
 		producer := c.hub.Producer
 		err = producer.SendMessage(ingestTopic, serializedMsg)
 		if err != nil {
 			log.Logger.Sugar().Errorf("Error sending message to Kafka: %v", err)
 			return
 		}
+
+		log.Logger.Sugar().Debugf("Message sent to Kafka ingest topic, sender: %s, recipient: %s",
+			msg.SenderUUID, msg.RecipientUUID)
 	}
 }
 

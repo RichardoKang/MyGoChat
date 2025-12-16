@@ -1,219 +1,239 @@
 # MyGoChat
 
-这是一个简单的即时通讯应用后端，旨在帮助我熟悉Golang的后端开发。
+一个基于 Go 语言的分布式即时通讯系统，采用 Gateway + Logic 分离架构。
 
 ## 功能特性
-- 用户注册与登录
-- 实时消息传递
-- 群组聊天
-- 消息存储与检索
+
+- 用户注册与登录（JWT 认证）
+- 好友关系管理
+- 私聊消息（实时 + 离线同步）
+- 群聊消息
+- WebSocket 实时通信
+- 消息持久化存储
 
 ## 技术栈
-- 后端框架：Gin
-    - 中间件：JWT认证、日志记录
-    - 路由管理
-- ORM：Gorm
-    - 数据库迁移与模型定义
-    - CRUD操作
-- 数据库：PostgreSQL
-- 实时通信：WebSocket
-    - 消息推送与接收
-    - 连接管理
-    - 心跳检测(TODO)
-- 消息队列：Kafka
-- 消息持久化：MongoDB(TODO)
-- 在线状态：Redis(TODO)
-- 容器化：Docker
+
+| 组件 | 技术 | 说明 |
+|------|------|------|
+| Web 框架 | Gin | HTTP 路由、中间件 |
+| ORM | GORM | PostgreSQL 操作 |
+| 关系型数据库 | PostgreSQL | 用户、群组、关系数据 |
+| 文档数据库 | MongoDB | 消息、会话存储 |
+| 缓存/路由 | Redis | 用户在线状态、离线消息队列 |
+| 消息队列 | Kafka | 消息投递、异步处理 |
+| 序列化 | Protobuf | 消息格式定义 |
+| 实时通信 | WebSocket | 消息推送 |
+| 容器化 | Docker | 服务部署 |
+
+## 系统架构
+
+```
+┌─────────────┐     ┌─────────────┐
+│   Client    │────▶│   Gateway   │  (WebSocket, 8081)
+└─────────────┘     └──────┬──────┘
+                           │
+                    Kafka (Ingest)
+                           │
+                    ┌──────▼──────┐
+                    │    Logic    │  (HTTP API, 8080)
+                    └──────┬──────┘
+                           │
+         ┌─────────────────┼─────────────────┐
+         │                 │                 │
+    ┌────▼────┐      ┌─────▼─────┐     ┌─────▼─────┐
+    │PostgreSQL│      │  MongoDB  │     │   Redis   │
+    └─────────┘      └───────────┘     └───────────┘
+```
+
+**消息流程：**
+1. Client 通过 WebSocket 连接 Gateway
+2. Gateway 将消息发送到 Kafka Ingest Topic
+3. Logic 消费消息，处理业务逻辑（存储、路由计算）
+4. Logic 查询 Redis 确定用户在线状态
+5. 在线用户：投递到 Kafka Delivery Topic → Gateway 推送
+6. 离线用户：存入 Redis 离线队列，上线时同步
 
 ## 项目结构
+
 ```
 MyGoChat/
-├── api/
-│   └── v1/
-│       ├── message.pb.go
-│       └── message.proto
+├── api/v1/                  # Protobuf 消息定义
 ├── cmd/
-│   └── main.go              # 中央依赖组装（DI wiring）
-├── configs/
-│   └── config.prod.yaml
-├── deployments/
-│   └── docker-compose.yaml
+│   ├── gateway/             # Gateway 服务入口
+│   └── logic/               # Logic 服务入口
+├── configs/                 # 配置文件
+├── deployments/             # Docker 部署配置
 ├── internal/
-│   ├── gateway/
-│   │   └── socket/
-│   │       ├── client.go
-│   │       ├── hub.go
-│   │       └── socket.go
-│   ├── logic/
-│   │   ├── data/            # 数据访问层（替代旧的全局 db 包）
-│   │   │   └── data.go
-│   │   ├── handler/         # 中央 Handler 持有服务实例
-│   │   │   ├── handler.go
-│   │   │   ├── group_controller.go
-│   │   │   └── user_controller.go
-│   │   ├── middleware/
-│   │   │   ├── cors.go
-│   │   │   └── jwt.go
-│   │   ├── server/
-│   │   │   └── http.go
-│   │   └── service/         # 服务层，构造函数接收依赖
-│   │       ├── group_service.go
-│   │       ├── message_service.go
-│   │       └── user_service.go
-│   ├── model/
-│   │   ├── group_member.go
-│   │   ├── group.go
-│   │   ├── message.go
-│   │   ├── user_friend.go
-│   │   └── user.go
-│   └── util/
-│       └── password.go
-└── pkg/
-├── common/
-│   ├── request/
-│   │   ├── group_request.go
-│   │   └── user_request.go
-│   └── response/
-│       ├── group_response.go
-│       ├── response_msg.go
-│       └── user_response.go
-├── config/
-│   └── config.go
-├── kafka/
-│   ├── consumer.go
-│   └── producer.go
-├── log/
-│   └── logger.go
-├── redis/
-│   └── redis.go
-├── test/
-│   ├── config_test.go
-│   ├── db_connection_test.go
-│   ├── kafka_test.go
-│   └── logger_test.go
-└── token/
-└── token.go
+│   ├── chat/                # 聊天模块 (消息、会话)
+│   ├── gateway/             # Gateway 模块 (WebSocket)
+│   ├── group/               # 群组模块
+│   ├── middleware/          # 中间件 (CORS, JWT)
+│   ├── platform/            # 平台层 (数据库连接)
+│   ├── relation/            # 关系模块 (好友、群成员)
+│   ├── server/              # HTTP 路由
+│   ├── user/                # 用户模块
+│   └── util/                # 工具函数
+├── pkg/
+│   ├── common/              # 请求/响应结构体
+│   ├── config/              # 配置加载
+│   ├── HTML/                # 前端测试页面
+│   ├── kafka/               # Kafka 生产者/消费者
+│   ├── log/                 # 日志
+│   ├── redis/               # Redis 客户端
+│   ├── test/                # 测试用例
+│   └── token/               # JWT 工具
+└── Markdown/                # 项目文档
 ```
-
 
 ## 快速开始
 
-### 1. 环境准备
+### 环境要求
 
-确保你的开发环境中安装了以下软件：
+- Go 1.18+
+- PostgreSQL 12+
+- MongoDB 4.4+
+- Redis 6+
+- Kafka 2.8+
+- Docker (可选)
 
-- Go (1.18+)
-- PostgreSQL (12+)
-- Kafka
-- Redis
-- MongoDB
-- Docker (可选, 用于快速启动Kafka)
-
-### 2. 克隆与安装依赖
+### 安装与启动
 
 ```bash
 # 克隆仓库
 git clone https://github.com/RichardoKang/MyGoChat.git
-
-# 进入项目目录
 cd MyGoChat
 
-# 安装 Go 依赖
+# 安装依赖
 go mod tidy
+
+# 启动依赖服务 (可选，使用 Docker)
+docker-compose -f deployments/docker-compose.yaml up -d
+
+# 启动 Logic 服务 (端口 8080)
+go run ./cmd/logic/main.go
+
+# 启动 Gateway 服务 (端口 8081)
+go run ./cmd/gateway/main.go
 ```
 
-项目启动后，默认会在 8080 端口监听 HTTP 请求。
+或使用启动脚本：
 
+```bash
+./start.sh
+```
+
+## API 接口
+
+### 用户模块
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | /api/user/register | 用户注册 |
+| POST | /api/user/login | 用户登录 |
+| PUT | /api/user/info/update | 更新用户信息 |
+
+### 消息模块
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | /api/message/send | 发送消息 |
+| GET | /api/message/history/:conversationId | 获取历史消息 |
+| GET | /api/message/conversations | 获取会话列表 |
+| POST | /api/message/conversation/private | 创建私聊会话 |
+| POST | /api/message/sync-offline | 同步离线消息 |
+
+### 关系模块
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | /api/relations/add-friend | 添加好友 |
+| POST | /api/relations/add-group | 加入群组 |
+| GET | /api/relations/list | 获取关系列表 |
+
+### 群组模块
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | /api/group/create | 创建群组 |
+
+### WebSocket
+
+| 路径 | 说明 |
+|------|------|
+| ws://localhost:8081/ws?token={jwt} | WebSocket 连接 |
 
 ## 前端测试页面
 
-项目提供了多个 HTML 测试页面，可以直接在浏览器中测试各项功能：
+项目提供 HTML 测试页面用于开发调试：
 
-### 📱 完整聊天客户端
-**文件**: `pkg/HTML/chat_client.html`
-- **功能**: 完整的聊天界面，包含登录、注册、聊天列表、实时消息等
-- **特点**: 类似真实聊天应用的用户界面
-- **适用**: 综合功能测试和演示
+**文件**: `pkg/HTML/index.html`
 
-### 🔧 功能测试工具
-**文件**: `pkg/HTML/test_client.html`  
-- **功能**: 分模块测试各个 API 接口和功能
-- **特点**: 详细的日志输出，便于调试
-- **适用**: 开发调试和 API 测试
-
-### 🌐 WebSocket 专用测试
-**文件**: `pkg/HTML/websocket_test.html`
-- **功能**: 专门测试 WebSocket 连接和实时消息
-- **特点**: 实时连接状态显示，消息收发记录
-- **适用**: WebSocket 功能调试
-
-### 🚀 使用方法
-
-1. **启动服务**
-   ```bash
-   # 启动后端服务
-   ./start.sh
-   ```
-
-2. **打开测试页面**
-   ```bash
-   # 在浏览器中打开任意测试页面
-   open pkg/HTML/chat_client.html
-   open pkg/HTML/test_client.html  
-   open pkg/HTML/websocket_test.html
-   ```
-
-3. **测试流程**
-   ```
-   注册用户 → 登录获取Token → 连接WebSocket → 创建群聊/私聊 → 发送消息
-   ```
-
-### 📋 测试场景示例
-
-#### 基础功能测试
-```javascript
-// 1. 注册两个测试用户
-用户A: username: "alice", password: "123456", nickname: "Alice"
-用户B: username: "bob", password: "123456", nickname: "Bob"
-
-// 2. 分别登录获取 JWT Token
-// 3. 建立 WebSocket 连接
-// 4. 创建私聊会话
-// 5. 发送消息测试
+**使用方法**:
+```bash
+# 启动服务后，在浏览器中打开
+open pkg/HTML/index.html
 ```
 
-#### 群聊功能测试  
-```javascript
-// 1. 用户A创建群聊 "测试群"
-// 2. 获取群号（如：123456）
-// 3. 用户B加入群聊
-// 4. 群内发送消息测试
-// 5. 验证群成员都能收到消息
+**功能**:
+- 用户登录/注册
+- WebSocket 连接管理
+- 会话列表展示
+- 实时消息收发
+- 好友添加
+- 调试日志输出
+
+**测试流程**:
+1. 注册/登录用户
+2. 添加好友
+3. 连接 WebSocket
+4. 选择会话并发送消息
+
+## 配置说明
+
+配置文件位于 `configs/` 目录：
+
+```yaml
+# config.dev.yaml
+postgresql:
+  host: 127.0.0.1
+  port: 5432
+  user: postgres
+  password: your_password
+  dbname: mygochat
+
+mongo:
+  uri: mongodb://localhost:27017
+  database: mygochat
+
+redis:
+  addr: 127.0.0.1:6379
+  password: ""
+  db: 0
+
+kafka:
+  brokers:
+    - localhost:9092
+  topics:
+    ingest: im_message_ingest
+    delivery: im_message_delivery_
+    sync_request: im_sync_request
+
+jwt:
+  secret: your_jwt_secret
+  expire: 24h
+
+log:
+  path: ./logs
+  level: debug
 ```
 
-#### 离线消息测试
-```javascript
-// 1. 用户A在线，用户B离线
-// 2. 用户A发送消息给用户B
-// 3. 用户B上线并连接WebSocket
-// 4. 验证用户B自动收到离线消息
-```
+## 注意事项
 
-### ⚠️ 注意事项
+1. **端口配置**: Logic 服务运行在 8080，Gateway 服务运行在 8081
+2. **JWT Token**: WebSocket 连接需要携带有效的 JWT Token
+3. **消息顺序**: 同一会话的消息通过 Kafka 分区键保证顺序
+4. **离线消息**: 用户上线时自动同步离线消息
 
-1. **服务端口确认**: 确保服务运行在正确端口
-   - Logic 服务: `http://localhost:8080`
-   - Gateway 服务: `ws://localhost:8081`
+## License
 
-2. **CORS 设置**: 如果遇到跨域问题，请检查 CORS 中间件配置
-
-3. **WebSocket 连接**: 需要先登录获取 JWT Token 才能建立 WebSocket 连接
-
-4. **浏览器兼容**: 建议使用现代浏览器（Chrome、Firefox、Safari、Edge）
-
-### 🐛 常见问题
-
-- **连接失败**: 检查服务是否启动，端口是否正确
-- **WebSocket 错误**: 确认 JWT Token 有效性  
-- **消息不显示**: 检查会话ID是否正确，用户是否在线
-- **API 调用失败**: 查看浏览器开发者工具的 Network 选项卡
+MIT License

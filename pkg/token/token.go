@@ -1,7 +1,6 @@
 package token
 
 import (
-	"MyGoChat/internal/model"
 	"MyGoChat/pkg/config"
 	"errors"
 	"time"
@@ -16,7 +15,7 @@ type Claims struct {
 }
 
 // GenerateToken 为给定的用户生成JWT令牌。
-func GenerateToken(user *model.User) (string, error) {
+func GenerateToken(userUuid string, username string) (string, error) {
 	jwtSecret := config.GetConfig().JwtSecret.SecretKey
 	if jwtSecret == "" {
 		return "", errors.New("JWT secret not configured")
@@ -25,8 +24,8 @@ func GenerateToken(user *model.User) (string, error) {
 	expirationTime := time.Now().Add(24 * time.Hour)
 
 	claims := &Claims{
-		UserUuid: user.Uuid,
-		Username: user.Username,
+		UserUuid: userUuid,
+		Username: username,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expirationTime),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
