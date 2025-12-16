@@ -161,13 +161,21 @@ func (r *repository) GetConversationByGroupNumber(ctx context.Context, groupNumb
 }
 
 func (r *repository) GetConversationByID(ctx context.Context, conversationID string) (*Conversation, error) {
-	objID, err := primitive.ObjectIDFromHex(conversationID)
-	if err != nil {
+	var conv Conversation
+
+	// 首先尝试直接使用字符串 ID 查询（私聊会话使用 MD5 哈希作为 ID）
+	err := r.convColl.FindOne(ctx, bson.M{"_id": conversationID}).Decode(&conv)
+	if err == nil {
+		return &conv, nil
+	}
+
+	// 如果字符串查询失败，尝试转换为 ObjectID 查询（群聊可能使用 ObjectID）
+	objID, parseErr := primitive.ObjectIDFromHex(conversationID)
+	if parseErr != nil {
+		// 无法解析为 ObjectID，返回原始错误
 		return nil, err
 	}
 
-	var conv Conversation
-	// r.convColl 是 conversations 表的集合
 	err = r.convColl.FindOne(ctx, bson.M{"_id": objID}).Decode(&conv)
 	if err != nil {
 		return nil, err

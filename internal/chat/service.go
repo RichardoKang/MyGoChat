@@ -32,6 +32,27 @@ type Service struct {
 	producer  *myKafka.Producer
 }
 
+// ConversationCreatorAdapter 适配器，实现 relation.ConversationCreator 接口
+type ConversationCreatorAdapter struct {
+	repo Repository
+}
+
+// NewConversationCreator 创建会话创建器
+func NewConversationCreator(repo Repository) *ConversationCreatorAdapter {
+	return &ConversationCreatorAdapter{repo: repo}
+}
+
+// CreateConversation 实现 relation.ConversationCreator 接口
+func (a *ConversationCreatorAdapter) CreateConversation(ctx context.Context, id string, convType int) error {
+	conv := &Conversation{
+		ID:        id,
+		Type:      convType,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	return a.repo.CreateConversation(ctx, conv)
+}
+
 func NewService(
 	repo Repository,
 	relRepo relation.Repository,
@@ -61,7 +82,9 @@ func (s *Service) EnqueueMessage(ctx context.Context, msg *pb.Message) error {
 		return err
 	}
 	// 发送到 Ingest Topic
-	return s.producer.SendMessage(config.GetConfig().Kafka.Topics.Ingest, msgBytes)
+	// 使用 ConversationID 作为 Key，确保同一会话的消息发送到同一分区，保证顺序性
+	key := []byte(msg.ConversationID)
+	return s.producer.SendMessageWithKey(config.GetConfig().Kafka.Topics.Ingest, key, msgBytes)
 }
 
 // SendMessage 是发送消息的唯一入口
@@ -97,25 +120,29 @@ func (s *Service) SendMessage(ctx context.Context, senderUUID string, req *reque
 		return nil, errors.New("不支持的消息类型")
 	}
 
-	// 2. 构造 Protobuf 消息
+	// 2. 获取发送者用户名
+	senderName, _ := s.userRepo.GetUsernameByUUID(ctx, senderUUID)
+
+	// 3. 构造 Protobuf 消息
 	// 注意：这里全是 UUID，没有任何 Number/Username
 	msg := &pb.Message{
 		Id:             primitive.NewObjectID().Hex(), // 生成消息 ID
 		ConversationID: conversationID,
 		SenderUUID:     senderUUID,
+		SenderName:     senderName, // 发送者用户名
 		RecipientUUID:  targetUUID, // 私聊是对方UUID，群聊是群UUID
 		MessageType:    req.MessageType,
 		ContentType:    req.ContentType,
 		SendAt:         time.Now().Unix(),
 	}
 
-	// 3. 处理消息体 (Any)
+	// 4. 处理消息体 (Any)
 	var errPack error
 	msg.Body, errPack = s.packProtoBody(req.ContentType, req.Body)
 	if errPack != nil {
 		return nil, errPack
 	}
-	// 4. 发送到 Kafka (Ingest Topic)
+	// 5. 发送到 Kafka (Ingest Topic)
 	// 消费者收到后会负责：存 Mongo(Upsert) + 推送给用户
 	if err := s.EnqueueMessage(ctx, msg); err != nil {
 		return nil, err
@@ -125,28 +152,53 @@ func (s *Service) SendMessage(ctx context.Context, senderUUID string, req *reque
 	return msg, nil
 }
 
+// ProcessMessage 是 Logic 服务的核心消息处理方法
+// 该方法由 Kafka Consumer 调用，处理从 Gateway 发送过来的消息
+//
+// 消息处理流程：
+// 1. 反序列化：将 Kafka 消息体解析为 Protobuf Message 结构
+// 2. 验证消息：检查必要字段（SenderUUID, ConversationID 等）
+// 3. 解包消息体：将 google.protobuf.Any 解包为具体类型
+// 4. 持久化：将消息存储到 MongoDB
+// 5. 更新会话：更新对应会话的最后消息信息
+// 6. 消息投递：
+//   - 在线用户：查询 Redis 路由表，投递到对应 Gateway 的 Delivery Topic
+//   - 离线用户：存储到 Redis 离线消息队列，等待用户上线时同步
 func (s *Service) ProcessMessage(ctx context.Context, kafkaMsg kafka.Message) error {
-	// 1. 反序列化 Protobuf
+	// Step 1: 反序列化 Protobuf 消息
+	// Gateway 发送过来的是序列化后的 pb.Message 字节数组
 	var msg pb.Message
 	if err := proto.Unmarshal(kafkaMsg.Value, &msg); err != nil {
 		log.Logger.Sugar().Errorf("Failed to unmarshal message: %v", err)
 		return err
 	}
 
-	// 2. 验证消息
+	log.Logger.Sugar().Infof("Processing message: sender=%s, recipient=%s, type=%d",
+		msg.SenderUUID, msg.RecipientUUID, msg.MessageType)
+
+	// Step 2: 如果 SenderName 为空，从数据库获取
+	if msg.SenderName == "" && msg.SenderUUID != "" {
+		if senderName, err := s.userRepo.GetUsernameByUUID(ctx, msg.SenderUUID); err == nil {
+			msg.SenderName = senderName
+		}
+	}
+
+	// Step 3: 验证消息有效性
+	// 确保必要字段存在，防止无效消息进入后续处理流程
 	if err := s.validateMessage(&msg); err != nil {
 		log.Logger.Sugar().Errorf("Invalid message: %v", err)
 		return err
 	}
 
-	// 3. 解包消息体
+	// Step 4: 解包消息体 (google.protobuf.Any -> 具体类型)
+	// 根据 ContentType 将 Any 类型解包为 TextBody/FileAttachment 等具体类型
 	body, err := s.unpackProtoBody(msg.ContentType, msg.Body)
 	if err != nil {
 		log.Logger.Sugar().Errorf("Failed to unpack body: %v", err)
 		return err
 	}
 
-	// 4. 构建数据模型
+	// Step 5: 构建 MongoDB 数据模型
 	convObjID, _ := primitive.ObjectIDFromHex(msg.ConversationID)
 	message := &Message{
 		ConversationID: convObjID,
@@ -156,24 +208,29 @@ func (s *Service) ProcessMessage(ctx context.Context, kafkaMsg kafka.Message) er
 		SendAt:         time.Now().Unix(),
 	}
 
-	// 5. 存储消息
+	// Step 5: 持久化消息到 MongoDB
+	// 消息必须先入库，确保数据不丢失，即使后续投递失败也可以通过离线消息恢复
 	if err := s.repo.CreateMsg(ctx, message); err != nil {
 		log.Logger.Sugar().Errorf("Failed to save message: %v", err)
 		return err
 	}
 
-	// 6. 更新会话最后消息
+	// Step 6: 更新会话的最后消息（用于聊天列表展示）
 	if err := s.repo.UpdateLastMessage(ctx, msg.ConversationID, message); err != nil {
 		log.Logger.Sugar().Warnf("Failed to update conversation: %v", err)
-		return err
+		// 这里不返回错误，因为消息已经存储成功，会话更新失败不影响消息投递
 	}
 
-	// 7. 推送消息给目标用户（在线和离线）
+	// Step 7: 投递消息给目标用户
+	// 根据用户在线状态决定是实时推送还是存储为离线消息
 	s.deliverMessage(ctx, &msg)
+
+	log.Logger.Sugar().Infof("Message processed successfully: id=%s", msg.Id)
 	return nil
 }
 
 // validateMessage 验证消息的有效性
+// 确保核心字段存在，防止无效消息进入后续处理流程
 func (s *Service) validateMessage(msg *pb.Message) error {
 	if msg.SenderUUID == "" {
 		return errors.New("sender UUID is required")
@@ -190,31 +247,42 @@ func (s *Service) validateMessage(msg *pb.Message) error {
 	return nil
 }
 
-// deliverMessage 将消息推送给目标用户（在线推送到Gateway，离线存储到Redis）
+// deliverMessage 将消息推送给目标用户
+// 这是消息投递的核心方法，负责实现"消息到达"的最后一公里
+//
+// 投递策略：
+// 1. 私聊 (MessageType=1): 目标用户就是 RecipientUUID
+// 2. 群聊 (MessageType=2): 从关系表查询所有群成员，逐一投递（排除发送者）
+//
+// 路由机制：
+// - 查询 Redis 键 "user_gateway:{userUUID}" 获取用户当前连接的 Gateway ID
+// - 如果存在：用户在线，发送到 Kafka Topic "im_message_delivery_{gatewayID}"
+// - 如果不存在：用户离线，存储到 Redis 列表 "offline_msg:{userUUID}"
 func (s *Service) deliverMessage(ctx context.Context, msg *pb.Message) {
-	// 根据消息类型决定推送目标
+	// 根据消息类型确定推送目标列表
 	var targetUsers []string
 
-	if msg.MessageType == 1 { // 私聊
+	if msg.MessageType == 1 { // 私聊：直接推送给接收者
 		targetUsers = []string{msg.RecipientUUID}
 		log.Logger.Sugar().Infof("Delivering private message from %s to %s", msg.SenderUUID, msg.RecipientUUID)
-	} else if msg.MessageType == 2 { // 群聊
+	} else if msg.MessageType == 2 { // 群聊：查询群成员列表
 		memberUUIDs, err := s.relRepo.GetGroupMemberUUIDs(ctx, msg.ConversationID)
 		if err != nil {
 			log.Logger.Sugar().Errorf("deliverMessage: failed to get group members for %s: %v", msg.ConversationID, err)
 			return
 		}
-
 		targetUsers = memberUUIDs
+		log.Logger.Sugar().Infof("Delivering group message to %d members", len(memberUUIDs))
 	}
 
-	// 为每个目标用户推送消息
+	// 遍历目标用户列表，逐一投递
 	for _, userUUID := range targetUsers {
-		if userUUID == msg.SenderUUID { // 不推送给发送者自己
+		// 跳过发送者自己，避免收到自己发的消息
+		if userUUID == msg.SenderUUID {
 			continue
 		}
 
-		// 构造推送消息
+		// 构造推送消息（复制原消息，更新接收者字段）
 		pushMsg := &pb.Message{
 			Id:             msg.Id,
 			ConversationID: msg.ConversationID,
@@ -226,19 +294,25 @@ func (s *Service) deliverMessage(ctx context.Context, msg *pb.Message) {
 			SenderName:     msg.SenderName,
 			Avatar:         msg.Avatar,
 			MessageType:    msg.MessageType,
-			RecipientUUID:  userUUID,
+			RecipientUUID:  userUUID, // 设置当前推送的目标用户
 		}
 
-		// 据用户在线状态推送
+		// 【核心路由逻辑】根据用户在线状态决定投递方式
+		// Redis 中存储了 user_gateway:{uuid} -> gatewayID 的映射关系
+		// 这个映射由 Gateway 的 Hub 在用户连接时写入，断开时删除
 		gatewayID := s.getUserGateway(userUUID)
 		if gatewayID != "" {
-			// 在线用户：推送到Gateway
+			// 用户在线：通过 Kafka 投递到对应 Gateway
+			// Topic 格式: im_message_delivery_{gatewayID}
+			// Gateway 会订阅自己的 Delivery Topic，收到消息后通过 WebSocket 推送给客户端
 			cfg := config.GetConfig()
 			topic := cfg.Kafka.Topics.Delivery + gatewayID
 			s.publishToKafka(topic, pushMsg)
 			log.Logger.Sugar().Infof("Delivered message to online user %s via gateway %s", userUUID, gatewayID)
 		} else {
-			// 离线用户：存储到Redis
+			// 用户离线：存储到 Redis 离线消息队列
+			// 当用户重新上线时，Gateway 会发送 sync_offline 请求
+			// Logic 服务收到请求后会调用 SyncOfflineMessages 将消息推送给用户
 			s.storeOfflineMessage(userUUID, pushMsg)
 			log.Logger.Sugar().Infof("Stored offline message for user %s", userUUID)
 		}
@@ -246,16 +320,28 @@ func (s *Service) deliverMessage(ctx context.Context, msg *pb.Message) {
 }
 
 // getUserGateway 获取用户当前连接的网关ID
+// 这是消息路由的核心：通过 Redis 查询用户当前在哪个 Gateway 上在线
+//
+// 路由表结构：
+// - Key: "user_gateway:{userUUID}"
+// - Value: gatewayID (如 "gateway-default", "gateway-1" 等)
+// - 由 Gateway 的 Hub 在用户连接时 SET，断开时 DEL
+//
+// 返回值：
+// - 非空字符串：用户在线，返回 gatewayID
+// - 空字符串：用户离线（Redis 中没有该 key）
 func (s *Service) getUserGateway(userUUID string) string {
 	ctx := context.Background()
 	gatewayID, err := s.redis.Get(ctx, "user_gateway:"+userUUID).Result()
 	if err != nil {
+		// redis.Nil 表示 key 不存在，即用户离线
 		return ""
 	}
 	return gatewayID
 }
 
 // publishToKafka 发布消息到 Kafka
+// 使用 ConversationID 作为 Key 保证同一会话的消息有序
 func (s *Service) publishToKafka(topic string, msg *pb.Message) {
 	msgData, err := proto.Marshal(msg)
 	if err != nil {
@@ -263,7 +349,9 @@ func (s *Service) publishToKafka(topic string, msg *pb.Message) {
 		return
 	}
 
-	err = s.producer.SendMessage(topic, msgData)
+	// 使用 ConversationID 作为 Key，确保同一会话的消息发送到同一分区
+	key := []byte(msg.ConversationID)
+	err = s.producer.SendMessageWithKey(topic, key, msgData)
 	if err != nil {
 		log.Logger.Sugar().Errorf("Failed to publish to kafka: %v", err)
 	}
@@ -514,15 +602,82 @@ func getInt64Value(m map[string]interface{}, key string) int64 {
 ****************************************************************************************************************/
 
 // GetConversationsByUserID 获取用户的会话列表
+// 通过 relation 表获取用户的会话ID列表，然后从 MongoDB 获取会话详情
 func (s *Service) GetConversationsByUserID(ctx context.Context, userID string, limit int64) ([]*Conversation, error) {
-	return s.repo.GetConversationsByUserID(ctx, userID, limit)
+	// 1. 从 relation 表获取用户的关系列表（包含 conversationID）
+	relations, err := s.relRepo.GetUserRelationsWithConversation(ctx, userID, int(limit))
+	if err != nil {
+		return nil, err
+	}
+
+	if len(relations) == 0 {
+		return []*Conversation{}, nil
+	}
+
+	// 2. 根据 conversationID 列表从 MongoDB 获取会话详情
+	var conversations []*Conversation
+	for _, rel := range relations {
+		conv, err := s.repo.GetConversationByID(ctx, rel.ConversationID)
+		if err != nil {
+			// 会话可能还不存在（只有关系但没发过消息），创建一个空的会话对象
+			conv = &Conversation{
+				ID:   rel.ConversationID,
+				Type: rel.Type,
+			}
+		}
+		// 填充 TargetUUID，用于前端 WebSocket 发送消息
+		conv.TargetUUID = rel.TargetUUID
+
+		// 获取目标用户名/群名，用于前端显示
+		if rel.Type == 1 { // 私聊
+			if targetName, err := s.userRepo.GetUsernameByUUID(ctx, rel.TargetUUID); err == nil {
+				conv.TargetName = targetName
+			} else {
+				conv.TargetName = rel.TargetUUID // 获取失败则显示 UUID
+			}
+		} else { // 群聊
+			if groupName, err := s.groupRepo.GetNameByUUID(ctx, rel.TargetUUID); err == nil {
+				conv.TargetName = groupName
+			} else {
+				conv.TargetName = rel.TargetUUID
+			}
+		}
+
+		conversations = append(conversations, conv)
+	}
+
+	return conversations, nil
 }
 
-// GetPrivateConversation 获取私聊会话
+// GetPrivateConversation 获取或创建私聊会话
+// 如果会话不存在，则自动创建
 func (s *Service) GetPrivateConversation(ctx context.Context, userID1, userID2 string) (*Conversation, error) {
 	convID := util.GetPrivateConversationID(userID1, userID2)
 
-	return s.repo.GetConversationByID(ctx, convID)
+	// 尝试获取现有会话
+	conv, err := s.repo.GetConversationByID(ctx, convID)
+	if err == nil {
+		return conv, nil
+	}
+
+	// 会话不存在，创建新会话
+	newConv := &Conversation{
+		ID:        convID,
+		Type:      1, // 私聊
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	if err := s.repo.CreateConversation(ctx, newConv); err != nil {
+		// 如果是重复键错误（并发创建），尝试重新获取
+		conv, getErr := s.repo.GetConversationByID(ctx, convID)
+		if getErr == nil {
+			return conv, nil
+		}
+		return nil, err
+	}
+
+	return newConv, nil
 }
 
 // CreateGroupConversation 创建群聊会话

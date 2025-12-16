@@ -14,6 +14,7 @@ type Repository interface {
 	GetMyGroups(userID uint) ([]response.GroupResponse, error)
 	GetGroupByGroupNumber(groupNumber string) (*Group, error)
 	GetUUIDByNumber(ctx context.Context, groupNumber string) (string, error)
+	GetNameByUUID(ctx context.Context, uuid string) (string, error)
 }
 
 type repository struct {
@@ -67,4 +68,18 @@ func (r *repository) GetUUIDByNumber(ctx context.Context, number string) (string
 		return "", err
 	}
 	return group.Uuid, nil
+}
+
+// GetNameByUUID 根据群组 UUID 获取群名
+func (r *repository) GetNameByUUID(ctx context.Context, uuid string) (string, error) {
+	var group Group
+	err := r.db.WithContext(ctx).
+		Select("name").
+		Where("uuid = ?", uuid).
+		First(&group).Error
+
+	if err != nil {
+		return "", err
+	}
+	return group.Name, nil
 }

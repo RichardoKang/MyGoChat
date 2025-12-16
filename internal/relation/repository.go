@@ -13,6 +13,8 @@ type Repository interface {
 	CreateFriendRelation(ctx context.Context, userUUID, friendUUID string) error
 	ListUserRelation(ctx context.Context, userUUID string) ([]*Relation, error)
 	GetGroupMemberUUIDs(ctx context.Context, groupUUID string) ([]string, error)
+	GetUserConversationIDs(ctx context.Context, userUUID string) ([]string, error)
+	GetUserRelationsWithConversation(ctx context.Context, userUUID string, limit int) ([]*Relation, error)
 }
 
 type repository struct {
@@ -88,4 +90,33 @@ func (r *repository) GetGroupMemberUUIDs(ctx context.Context, groupUUID string) 
 		return nil, err
 	}
 	return memberUUIDs, nil
+}
+
+// GetUserConversationIDs 获取用户的所有会话ID列表
+func (r *repository) GetUserConversationIDs(ctx context.Context, userUUID string) ([]string, error) {
+	var conversationIDs []string
+	err := r.db.WithContext(ctx).
+		Model(&Relation{}).
+		Where("user_uuid = ? AND status = ?", userUUID, 1).
+		Pluck("conversation_id", &conversationIDs).Error
+
+	if err != nil {
+		return nil, err
+	}
+	return conversationIDs, nil
+}
+
+// GetUserRelationsWithConversation 获取用户的关系列表（包含会话ID）
+func (r *repository) GetUserRelationsWithConversation(ctx context.Context, userUUID string, limit int) ([]*Relation, error) {
+	var relations []*Relation
+	err := r.db.WithContext(ctx).
+		Where("user_uuid = ? AND status = ?", userUUID, 1).
+		Order("updated_at DESC").
+		Limit(limit).
+		Find(&relations).Error
+
+	if err != nil {
+		return nil, err
+	}
+	return relations, nil
 }

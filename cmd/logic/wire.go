@@ -36,8 +36,6 @@ var ChatSet = wire.NewSet(
 	chat.NewChatRepo,
 	chat.NewService,
 	chat.NewHandler,
-	// 如果 Service 实现了接口，这里可能需要 wire.Bind
-	// wire.Bind(new(group.IChatService), new(*chat.Service)),
 )
 
 // RelationSet 聚合 Relation 模块

@@ -24,14 +24,21 @@ func InitProducer() *Producer {
 	return &Producer{writer: writer}
 }
 
-// SendMessage 发送消息到指定的Kafka主题
+// SendMessage 发送消息到指定的Kafka主题（无 Key）
 func (p *Producer) SendMessage(topic string, message []byte) error {
+	return p.SendMessageWithKey(topic, nil, message)
+}
+
+// SendMessageWithKey 发送消息到指定的Kafka主题（带 Key）
+// 使用 Key 可以保证相同 Key 的消息发送到同一个分区，确保消息顺序性
+func (p *Producer) SendMessageWithKey(topic string, key, message []byte) error {
 	// 设置一个10秒的超时时间，以防止发送消息时阻塞过久
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	return p.writer.WriteMessages(ctx, kafka.Message{
 		Topic: topic,
+		Key:   key,
 		Value: message,
 	})
 }

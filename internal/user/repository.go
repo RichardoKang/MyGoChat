@@ -15,6 +15,7 @@ type Repository interface {
 	GetUserByUuid(uuid string) (*User, error)
 	GetUserByID(id uint) (*User, error)
 	GetUUIDByUsername(ctx context.Context, username string) (string, error)
+	GetUsernameByUUID(ctx context.Context, uuid string) (string, error)
 }
 
 type repository struct {
@@ -98,4 +99,18 @@ func (r *repository) GetUUIDByUsername(ctx context.Context, username string) (st
 		return "", err
 	}
 	return user.Uuid, nil
+}
+
+// GetUsernameByUUID 根据 UUID 获取用户名
+func (r *repository) GetUsernameByUUID(ctx context.Context, uuid string) (string, error) {
+	var user User
+	err := r.db.WithContext(ctx).
+		Select("username").
+		Where("uuid = ?", uuid).
+		First(&user).Error
+
+	if err != nil {
+		return "", err
+	}
+	return user.Username, nil
 }

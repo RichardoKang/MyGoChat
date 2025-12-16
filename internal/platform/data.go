@@ -150,3 +150,15 @@ func getDSN(cfg config.YamlConfig) string {
 
 	return dsn
 }
+
+func ProvideDB(data *Data) *gorm.DB {
+	return data.GetDB()
+}
+
+func ProvideMongoDB(data *Data) *mongo.Database {
+	return data.GetMongoDB()
+}
+
+func ProvideRedisClient(data *Data) *redis.Client {
+	return data.GetRedisClient()
+}

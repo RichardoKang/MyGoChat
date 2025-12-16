@@ -35,11 +35,14 @@ func main() {
 	kafkaProducer := mq.InitProducer()
 	defer kafkaProducer.CloseProducer()
 
+	// 创建会话创建器
+	convCreator := chat.NewConversationCreator(chatRepo)
+
 	// Init Services
 	chatService := chat.NewService(chatRepo, relationRepo, groupRepo, userRepo, dataObj.GetRedisClient(), kafkaProducer)
 	userService := user.NewService(userRepo, dataObj.GetRedisClient())
 	groupService := group.NewService(groupRepo, userRepo, relationRepo)
-	relationService := relation.NewService(relationRepo)
+	relationService := relation.NewService(relationRepo, userRepo, groupRepo, convCreator)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

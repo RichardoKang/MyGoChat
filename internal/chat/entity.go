@@ -7,14 +7,16 @@ import (
 )
 
 type Conversation struct {
-	ID   string `bson:"_id"`
-	Type int    `bson:"type"` // 1=私聊, 2=群聊
+	ID         string `bson:"_id" json:"ID"`
+	Type       int    `bson:"type" json:"Type"`              // 1=私聊, 2=群聊
+	TargetUUID string `bson:"-" json:"TargetUUID,omitempty"` // 对方的UUID（私聊）或群UUID（群聊），不存入MongoDB
+	TargetName string `bson:"-" json:"TargetName,omitempty"` // 对方的用户名（私聊）或群名（群聊），不存入MongoDB
 
 	// 会话信息
-	LastMessage          interface{} `bson:"lastMessage,omitempty"` // 最后一条消息内容
-	LastMessageTimestamp int64       `bson:"lastMessageTimestamp"`  // 最后消息时间戳
-	CreatedAt            time.Time   `bson:"createdAt"`             // 会话创建时间
-	UpdatedAt            time.Time   `bson:"updatedAt"`             // 会话更新时间
+	LastMessage          interface{} `bson:"lastMessage,omitempty" json:"LastMessage,omitempty"` // 最后一条消息内容
+	LastMessageTimestamp int64       `bson:"lastMessageTimestamp" json:"LastMessageTimestamp"`   // 最后消息时间戳
+	CreatedAt            time.Time   `bson:"createdAt" json:"CreatedAt"`                         // 会话创建时间
+	UpdatedAt            time.Time   `bson:"updatedAt" json:"UpdatedAt"`                         // 会话更新时间
 }
 
 type Message struct {

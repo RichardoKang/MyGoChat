@@ -56,9 +56,12 @@ func NewRouter(
 		message := api.Group("/message")
 		{
 			message.Use(middleware.JWTAuthMiddleware())
-			message.POST("/send", chatHandler.SendMessage)                         // 发送消息（HTTP）
-			message.GET("/history/:conversationId", chatHandler.GetMessageHistory) // 获取历史消息
-			message.POST("/sync-offline", chatHandler.SyncOfflineMessages)         // 同步离线消息 // 标记消息为已读
+			message.POST("/send", chatHandler.SendMessage)                               // 发送消息（HTTP）
+			message.GET("/history/:conversationId", chatHandler.GetMessageHistory)       // 获取历史消息
+			message.POST("/sync-offline", chatHandler.SyncOfflineMessages)               // 同步离线消息
+			message.GET("/conversations", chatHandler.GetConversations)                  // 获取会话列表
+			message.POST("/conversation/private", chatHandler.CreatePrivateConversation) // 创建私聊会话
+			message.POST("/read", chatHandler.MarkAsRead)                                // 标记消息已读
 		}
 
 		relations := api.Group("/relations")
