@@ -116,12 +116,6 @@ go run ./cmd/logic/main.go
 go run ./cmd/gateway/main.go
 ```
 
-或使用启动脚本：
-
-```bash
-./start.sh
-```
-
 ## API 接口
 
 ### 用户模块
@@ -191,41 +185,6 @@ open pkg/HTML/index.html
 ## 配置说明
 
 配置文件位于 `configs/` 目录：
-
-```yaml
-# config.dev.yaml
-postgresql:
-  host: 127.0.0.1
-  port: 5432
-  user: postgres
-  password: your_password
-  dbname: mygochat
-
-mongo:
-  uri: mongodb://localhost:27017
-  database: mygochat
-
-redis:
-  addr: 127.0.0.1:6379
-  password: ""
-  db: 0
-
-kafka:
-  brokers:
-    - localhost:9092
-  topics:
-    ingest: im_message_ingest
-    delivery: im_message_delivery_
-    sync_request: im_sync_request
-
-jwt:
-  secret: your_jwt_secret
-  expire: 24h
-
-log:
-  path: ./logs
-  level: debug
-```
 
 ## 注意事项
 
