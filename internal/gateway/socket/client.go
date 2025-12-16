@@ -68,9 +68,6 @@ func (c *Client) readPump() {
 		}
 
 		// 【安全关键】强制覆盖 SenderUUID
-		// 无论客户端发送什么 SenderUUID，都必须使用当前连接经过 JWT 鉴权后获取的真实用户 UUID
-		// 这是防止用户伪造发送者身份的关键安全措施
-		// c.userUUID 是在 WebSocket 握手时从 JWT token 中解析出来的，是可信的
 		msg.SenderUUID = c.userUUID
 
 		// 序列化为protobuf发送给Kafka

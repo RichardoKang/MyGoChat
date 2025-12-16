@@ -131,13 +131,7 @@ func convertProtoToJSON(msg *pb.Message) ([]byte, error) {
 	return json.Marshal(jsonData)
 }
 
-// Run 运行 Hub 的主循环，负责客户端连接的注册和注销
-// 这是一个长期运行的 goroutine，通过 channel 接收注册/注销请求
-//
-// 核心职责：
-// 1. 维护本 Gateway 的客户端连接池 (clients map)
-// 2. 在 Redis 中维护用户路由表 (user_gateway:{uuid} -> gatewayID)
-// 3. 处理用户上线/下线事件
+// Run 负责客户端连接的注册和注销
 func (h *Hub) Run() {
 	log.Logger.Info("WebSocket Hub started")
 
@@ -149,8 +143,6 @@ func (h *Hub) Run() {
 			h.clients[client.userUUID] = client
 			h.mu.Unlock()
 
-			// 【关键】在 Redis 中注册用户路由信息
-			// Logic 服务通过查询这个 key 来确定消息应该投递到哪个 Gateway
 			// Key: user_gateway:{userUUID}, Value: gatewayID
 			if h.redis != nil {
 				err := h.redis.Set(h.ctx, "user_gateway:"+client.userUUID, h.gatewayID, 0).Err()

@@ -199,16 +199,16 @@ func (s *Service) ProcessMessage(ctx context.Context, kafkaMsg kafka.Message) er
 	}
 
 	// Step 5: 构建 MongoDB 数据模型
-	convObjID, _ := primitive.ObjectIDFromHex(msg.ConversationID)
 	message := &Message{
-		ConversationID: convObjID,
+		ConversationID: msg.ConversationID, // 直接使用字符串
 		SenderUUID:     msg.SenderUUID,
+		SenderName:     msg.SenderName,
 		ContentType:    int16(msg.ContentType),
 		Body:           body,
 		SendAt:         time.Now().Unix(),
 	}
 
-	// Step 5: 持久化消息到 MongoDB
+	// Step 6: 持久化消息到 MongoDB
 	// 消息必须先入库，确保数据不丢失，即使后续投递失败也可以通过离线消息恢复
 	if err := s.repo.CreateMsg(ctx, message); err != nil {
 		log.Logger.Sugar().Errorf("Failed to save message: %v", err)

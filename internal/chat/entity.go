@@ -20,14 +20,15 @@ type Conversation struct {
 }
 
 type Message struct {
-	ID             primitive.ObjectID `bson:"_id,omitempty"`
-	ConversationID primitive.ObjectID `bson:"conversationID"` // 索引: 属于哪个会话
-	SenderUUID     string             `bson:"senderUUID"`     // 索引: 谁发的 (用户的 UUID string)
-	SendAt         int64              `bson:"sendAt"`         // 索引: 消息发送时间
-	ContentType    int16              `bson:"contentType"`    // 1=text, 2=image, 3=file, 4=voice
-	Body           any                `bson:"body"`           // ContentType=1: "Hello" (string)， ContentType=2/3/...: FileAttachment 结构体
-	Metadata       *MessageMetadata   `bson:"metadata,omitempty"`
-	DeletedAt      *time.Time         `bson:"deletedAt,omitempty"`
+	ID             primitive.ObjectID `bson:"_id,omitempty" json:"ID"`
+	ConversationID string             `bson:"conversationID" json:"ConversationID"` // 会话ID (字符串，支持MD5哈希)
+	SenderUUID     string             `bson:"senderUUID" json:"SenderUUID"`         // 发送者 UUID
+	SenderName     string             `bson:"senderName" json:"SenderName"`         // 发送者用户名
+	SendAt         int64              `bson:"sendAt" json:"SendAt"`                 // 发送时间戳
+	ContentType    int16              `bson:"contentType" json:"ContentType"`       // 1=text, 2=image, 3=file, 4=voice
+	Body           any                `bson:"body" json:"Body"`                     // 消息内容
+	Metadata       *MessageMetadata   `bson:"metadata,omitempty" json:"Metadata,omitempty"`
+	DeletedAt      *time.Time         `bson:"deletedAt,omitempty" json:"DeletedAt,omitempty"`
 }
 
 // FileAttachment 用于 Body 字段 (当 ContentType 不是 text 时)

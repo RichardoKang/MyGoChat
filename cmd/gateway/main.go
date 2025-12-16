@@ -22,8 +22,7 @@ func main() {
 		gatewayID = "gateway-default" // 本地测试用
 		log.Logger.Warn("GATEWAY_ID not set, using default")
 	}
-
-	// 使用 pkg/redis 包中的全局 Redis 实例
+	// 初始化 Redis 客户端
 	redisClient := myRedis.Rdb
 
 	// kafka producer负责向 Logic Service 发送消息
