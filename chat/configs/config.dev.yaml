@@ -1,0 +1,36 @@
+AppName: "MyGoChat"
+
+SeverID: "mygochat-server-01"
+
+PostgresSQL:
+  user: "postgres"
+  password: "15155125836kk"
+  host: "118.25.193.77"
+  port: 5432
+  dbname: "mygochat"
+  sslmode: "disable"
+  timezone: "Asia/Shanghai"
+
+Log:
+  level: "debug"
+  path: "./pkg/log/log"
+
+JwtSecret:
+  SecretKey: "your_secret_key"
+
+Kafka:
+  brokers:
+    - "127.0.0.1:9092"
+  topics:
+    ingest: "im_message_ingest"
+    sync_request: "im_sync_request"
+    delivery: "im_message_delivery_"
+
+Redis:
+  addr: "127.0.0.1:6379"
+  password: "mygochat"
+  db: 0
+
+Mongo:
+  uri: "mongodb://admin:admin@localhost:27017"
+  database: "mygochat"
