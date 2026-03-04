@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyGoChat - 即时通讯</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+        [v-cloak] { display: none; }
+
+        /* 自定义滚动条 */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+
+        /* 动画 */
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
+        .slide-enter-active, .slide-leave-active { transition: transform 0.3s ease, opacity 0.3s ease; }
+        .slide-enter-from, .slide-leave-to { transform: translateX(20px); opacity: 0; }
+        .toast-enter-active, .toast-leave-active { transition: all 0.3s ease; }
+        .toast-enter-from, .toast-leave-to { opacity: 0; transform: translateY(-20px); }
+
+        /* 消息气泡动画 */
+        .message-enter-active { animation: messageIn 0.3s ease; }
+        @keyframes messageIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 打字指示器 */
+        .typing-dot { animation: typingDot 1.4s infinite ease-in-out both; }
+        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes typingDot {
+            0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+            40% { transform: scale(1); opacity: 1; }
+        }
+
+        /* 渐变背景 */
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .gradient-text {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* 玻璃态效果 */
+        .glass {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        /* 脉冲动画 */
+        .pulse-online {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* 输入框聚焦效果 */
+        .input-focus:focus {
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);
+        }
+
+        /* 悬浮卡片 */
+        .hover-card {
+            transition: all 0.2s ease;
+        }
+        .hover-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.3);
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 min-h-screen">
+    <div id="app" v-cloak class="h-screen flex flex-col">
+        <!-- 顶部导航栏 -->
+        <header class="h-16 bg-slate-900/80 backdrop-blur-xl border-b border-slate-700/50 flex items-center px-6 z-50">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl gradient-bg flex items-center justify-center shadow-lg shadow-purple-500/30">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                    </svg>
+                </div>
+                <h1 class="text-xl font-bold text-white">MyGoChat</h1>
+            </div>
+
+            <div class="flex-1"></div>
+
+            <!-- 右侧操作区 -->
+            <div class="flex items-center gap-4">
+                <!-- WebSocket 状态指示 -->
+                <div class="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm"
+                     :class="ws.connected ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700/50 text-slate-400'">
+                    <span class="w-2 h-2 rounded-full" :class="ws.connected ? 'bg-emerald-400 pulse-online' : 'bg-slate-500'"></span>
+                    <span>{{ ws.connected ? '已连接' : '未连接' }}</span>
+                </div>
+
+                <!-- 用户头像/登录按钮 -->
+                <div v-if="auth.token" class="relative" ref="userMenuRef">
+                    <button @click="showUserMenu = !showUserMenu"
+                            class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-700/50 transition-colors">
+                        <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-medium">
+                            {{ auth.username?.charAt(0)?.toUpperCase() || 'U' }}
+                        </div>
+                        <span class="text-slate-300 text-sm">{{ auth.username }}</span>
+                        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                        </svg>
+                    </button>
+
+                    <!-- 用户下拉菜单 -->
+                    <transition name="fade">
+                        <div v-if="showUserMenu" class="absolute right-0 top-full mt-2 w-56 bg-slate-800 rounded-xl shadow-xl border border-slate-700 overflow-hidden">
+                            <div class="p-3 border-b border-slate-700">
+                                <p class="text-white font-medium">{{ auth.username }}</p>
+                                <p class="text-slate-400 text-xs truncate">{{ currentUserUUID }}</p>
+                            </div>
+                            <div class="p-2">
+                                <button @click="showProfileModal = true; showUserMenu = false"
+                                        class="w-full flex items-center gap-3 px-3 py-2 text-slate-300 hover:bg-slate-700 rounded-lg transition-colors">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                                    </svg>
+                                    <span>个人资料</span>
+                                </button>
+                                <button @click="logout"
+                                        class="w-full flex items-center gap-3 px-3 py-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                                    </svg>
+                                    <span>退出登录</span>
+                                </button>
+                            </div>
+                        </div>
+                    </transition>
+                </div>
+            </div>
+        </header>
+
+        <!-- 主内容区 -->
+        <div class="flex-1 flex overflow-hidden">
+            <!-- 左侧边栏 - 会话列表 -->
+            <aside class="w-80 bg-slate-900/50 border-r border-slate-700/50 flex flex-col">
+                <!-- 搜索和新建 -->
+                <div class="p-4 space-y-3">
+                    <div class="relative">
+                        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                        <input v-model="searchQuery" type="text" placeholder="搜索会话..."
+                               class="w-full pl-10 pr-4 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-200 placeholder-slate-500 text-sm focus:border-indigo-500 focus:outline-none input-focus">
+                    </div>
+                    <div class="flex gap-2">
+                        <button @click="showNewChatModal = true"
+                                class="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 rounded-xl text-white text-sm font-medium transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                            </svg>
+                            新会话
+                        </button>
+                        <button @click="showCreateGroupModal = true"
+                                class="px-4 py-2.5 bg-slate-700/50 hover:bg-slate-700 rounded-xl text-slate-300 text-sm font-medium transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 会话类型标签 -->
+                <div class="px-4 pb-3 flex gap-2">
+                    <button @click="conversationFilter = 'all'"
+                            :class="['px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                                     conversationFilter === 'all' ? 'bg-indigo-600 text-white' : 'bg-slate-800/50 text-slate-400 hover:text-slate-200']">
+                        全部
+                    </button>
+                    <button @click="conversationFilter = 'private'"
+                            :class="['px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                                     conversationFilter === 'private' ? 'bg-indigo-600 text-white' : 'bg-slate-800/50 text-slate-400 hover:text-slate-200']">
+                        私聊
+                    </button>
+                    <button @click="conversationFilter = 'group'"
+                            :class="['px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                                     conversationFilter === 'group' ? 'bg-indigo-600 text-white' : 'bg-slate-800/50 text-slate-400 hover:text-slate-200']">
+                        群聊
+                    </button>
+                </div>
+
+                <!-- 会话列表 -->
+                <div class="flex-1 overflow-y-auto px-3 pb-3 space-y-1">
+                    <div v-for="conv in filteredConversations" :key="conv.ID"
+                         @click="selectConversation(conv)"
+                         :class="['group relative p-3 rounded-xl cursor-pointer transition-all hover-card',
+                                  selectedConversation?.ID === conv.ID
+                                    ? 'bg-indigo-600/20 border border-indigo-500/50'
+                                    : 'bg-slate-800/30 hover:bg-slate-800/50 border border-transparent']">
+                        <div class="flex items-center gap-3">
+                            <!-- 头像 -->
+                            <div class="relative">
+                                <div :class="['w-12 h-12 rounded-xl flex items-center justify-center text-white font-medium shadow-lg',
+                                              conv.Type === 2 ? 'bg-gradient-to-br from-emerald-500 to-teal-600' : 'bg-gradient-to-br from-indigo-500 to-purple-600']">
+                                    <span v-if="conv.Type === 2">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                                        </svg>
+                                    </span>
+                                    <span v-else>{{ getConversationName(conv).charAt(0)?.toUpperCase() || '?' }}</span>
+                                </div>
+                            </div>
+
+                            <!-- 会话信息 -->
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center justify-between mb-1">
+                                    <h3 class="text-white font-medium truncate">{{ getConversationName(conv) }}</h3>
+                                    <span class="text-slate-500 text-xs">{{ formatTimeShort(conv.LastMessageTimestamp) }}</span>
+                                </div>
+                                <p class="text-slate-400 text-sm truncate">{{ conv.Type === 2 ? '群聊' : '私聊' }}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 空状态 -->
+                    <div v-if="filteredConversations.length === 0" class="flex flex-col items-center justify-center py-16 text-slate-500">
+                        <svg class="w-16 h-16 mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                        </svg>
+                        <p class="text-lg font-medium">暂无会话</p>
+                        <p class="text-sm mt-1">点击"新会话"开始聊天</p>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- 中间聊天区域 -->
+            <main class="flex-1 flex flex-col bg-slate-800/30">
+                <!-- 聊天头部 -->
+                <div v-if="selectedConversation" class="h-16 px-6 bg-slate-900/50 border-b border-slate-700/50 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div :class="['w-10 h-10 rounded-xl flex items-center justify-center text-white font-medium',
+                                      selectedConversation.Type === 2 ? 'bg-gradient-to-br from-emerald-500 to-teal-600' : 'bg-gradient-to-br from-indigo-500 to-purple-600']">
+                            <span v-if="selectedConversation.Type === 2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                                </svg>
+                            </span>
+                            <span v-else>{{ getConversationName(selectedConversation).charAt(0)?.toUpperCase() || '?' }}</span>
+                        </div>
+                        <div>
+                            <h2 class="text-white font-medium">{{ getConversationName(selectedConversation) }}</h2>
+                            <p class="text-slate-400 text-xs">{{ selectedConversation.Type === 2 ? '群聊' : '私聊' }}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button @click="showConversationInfo = !showConversationInfo"
+                                class="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 消息区域 -->
+                <div v-if="selectedConversation" ref="messagesContainer" class="flex-1 overflow-y-auto p-6 space-y-4">
+                    <div v-for="(msg, index) in messages" :key="msg.ID || index"
+                         :class="['flex', isMyMessage(msg) ? 'justify-end' : 'justify-start']">
+                        <div :class="['max-w-[70%] flex gap-3', isMyMessage(msg) ? 'flex-row-reverse' : '']">
+                            <!-- 头像 -->
+                            <div :class="['w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm flex-shrink-0',
+                                          isMyMessage(msg) ? 'bg-gradient-to-br from-indigo-500 to-purple-600' : 'bg-slate-600']">
+                                {{ getSenderName(msg).charAt(0)?.toUpperCase() || '?' }}
+                            </div>
+
+                            <!-- 消息内容 -->
+                            <div :class="[isMyMessage(msg) ? 'items-end' : 'items-start', 'flex flex-col gap-1']">
+                                <span class="text-slate-500 text-xs">{{ getSenderName(msg) }}</span>
+                                <div :class="['px-4 py-2.5 rounded-2xl',
+                                              isMyMessage(msg) ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-br-md' : 'bg-slate-700 text-slate-200 rounded-bl-md']">
+                                    <p class="text-sm leading-relaxed">{{ getMessageBody(msg) }}</p>
+                                </div>
+                                <span class="text-slate-600 text-xs">{{ formatTime(msg.SendAt || msg.sendAt) }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 空消息状态 -->
+                    <div v-if="messages.length === 0" class="flex flex-col items-center justify-center py-20 text-slate-500">
+                        <svg class="w-20 h-20 mb-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                        </svg>
+                        <p class="text-lg">开始聊天吧</p>
+                        <p class="text-sm mt-1">发送第一条消息开始对话</p>
+                    </div>
+                </div>
+
+                <!-- 未选择会话时的占位 -->
+                <div v-else class="flex-1 flex items-center justify-center text-slate-500">
+                    <div class="text-center">
+                        <div class="w-24 h-24 mx-auto mb-6 rounded-2xl bg-slate-800/50 flex items-center justify-center">
+                            <svg class="w-12 h-12 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                            </svg>
+                        </div>
+                        <h3 class="text-xl font-medium text-slate-400 mb-2">选择一个会话</h3>
+                        <p class="text-slate-500">从左侧列表中选择一个会话开始聊天</p>
+                    </div>
+                </div>
+
+                <!-- 输入区域 -->
+                <div v-if="selectedConversation" class="p-4 bg-slate-900/50 border-t border-slate-700/50">
+                    <div class="flex items-end gap-3">
+                        <div class="flex-1 relative">
+                            <textarea v-model="messageInput" @keydown.enter.exact.prevent="sendMessage"
+                                      placeholder="输入消息..." rows="1"
+                                      class="w-full px-4 py-3 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-200 placeholder-slate-500 text-sm resize-none focus:border-indigo-500 focus:outline-none input-focus"></textarea>
+                        </div>
+                        <button @click="sendMessage" :disabled="!ws.connected || !messageInput.trim()"
+                                :class="['px-6 py-3 rounded-xl font-medium transition-all',
+                                         ws.connected && messageInput.trim()
+                                           ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50'
+                                           : 'bg-slate-700/50 text-slate-500 cursor-not-allowed']">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <p v-if="!ws.connected" class="text-amber-400 text-xs mt-2 flex items-center gap-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                        </svg>
+                        WebSocket 未连接，消息将无法发送
+                    </p>
+                </div>
+            </main>
+
+            <!-- 右侧边栏 - 联系人/调试 -->
+            <aside class="w-80 bg-slate-900/50 border-l border-slate-700/50 flex flex-col">
+                <!-- 标签切换 -->
+                <div class="flex border-b border-slate-700/50">
+                    <button @click="rightTab = 'contacts'"
+                            :class="['flex-1 px-4 py-3 text-sm font-medium transition-colors',
+                                     rightTab === 'contacts' ? 'text-indigo-400 border-b-2 border-indigo-500' : 'text-slate-400 hover:text-slate-200']">
+                        联系人
+                    </button>
+                    <button @click="rightTab = 'debug'"
+                            :class="['flex-1 px-4 py-3 text-sm font-medium transition-colors',
+                                     rightTab === 'debug' ? 'text-indigo-400 border-b-2 border-indigo-500' : 'text-slate-400 hover:text-slate-200']">
+                        调试
+                    </button>
+                </div>
+
+                <!-- 联系人列表 -->
+                <div v-if="rightTab === 'contacts'" class="flex-1 overflow-y-auto p-4">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-white font-medium">好友列表</h3>
+                        <button @click="showAddFriendModal = true"
+                                class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="space-y-2">
+                        <div v-for="relation in relations" :key="relation.ID || relation.uuid"
+                             class="flex items-center gap-3 p-3 bg-slate-800/30 hover:bg-slate-800/50 rounded-xl cursor-pointer transition-colors">
+                            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white font-medium">
+                                {{ relation.username?.charAt(0)?.toUpperCase() || '?' }}
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-white text-sm font-medium truncate">{{ relation.username || relation.Name }}</p>
+                                <p class="text-slate-500 text-xs">{{ relation.type === 'friend' ? '好友' : '群组' }}</p>
+                            </div>
+                        </div>
+                        <div v-if="relations.length === 0" class="text-center text-slate-500 py-8">
+                            <p class="text-sm">暂无联系人</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 调试面板 -->
+                <div v-if="rightTab === 'debug'" class="flex-1 overflow-y-auto p-4">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-white font-medium">调试日志</h3>
+                        <button @click="debugLogs = []" class="text-slate-400 hover:text-white text-xs">清空</button>
+                    </div>
+                    <div class="space-y-2">
+                        <div v-for="(log, index) in debugLogs" :key="index"
+                             :class="['p-3 rounded-lg text-xs font-mono border-l-4',
+                                      log.type === 'error' ? 'bg-red-900/20 border-red-500 text-red-300' :
+                                      log.type === 'ws' ? 'bg-emerald-900/20 border-emerald-500 text-emerald-300' :
+                                      log.type === 'ws-send' ? 'bg-blue-900/20 border-blue-500 text-blue-300' :
+                                      'bg-slate-800/50 border-slate-500 text-slate-300']">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="font-bold">{{ log.type === 'ws' ? 'WS IN' : log.type === 'ws-send' ? 'WS OUT' : log.type === 'error' ? 'ERR' : 'HTTP' }}</span>
+                                <span class="text-slate-500">{{ log.timestamp }}</span>
+                            </div>
+                            <div v-if="log.method" class="text-slate-400 mb-1">{{ log.method }} {{ log.url }}</div>
+                            <pre class="overflow-x-auto whitespace-pre-wrap break-all">{{ typeof log.data === 'object' ? JSON.stringify(log.data, null, 2) : log.data }}</pre>
+                        </div>
+                        <div v-if="debugLogs.length === 0" class="text-center text-slate-500 py-8">
+                            <p class="text-sm">暂无日志</p>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+
+        <!-- Toast 通知 -->
+        <div class="fixed top-20 right-6 z-50 space-y-2">
+            <transition-group name="toast">
+                <div v-for="toast in toasts" :key="toast.id"
+                     :class="['px-4 py-3 rounded-xl shadow-lg max-w-sm flex items-center gap-3',
+                              toast.type === 'error' ? 'bg-red-600/90 text-white' :
+                              toast.type === 'success' ? 'bg-emerald-600/90 text-white' : 'bg-indigo-600/90 text-white']">
+                    <svg v-if="toast.type === 'success'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                    <svg v-else-if="toast.type === 'error'" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                    <span class="text-sm font-medium">{{ toast.message }}</span>
+                </div>
+            </transition-group>
+        </div>
+
+        <!-- 登录模态框 -->
+        <transition name="fade">
+            <div v-if="!auth.token" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+                <div class="bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-8 border border-slate-700">
+                    <div class="text-center mb-8">
+                        <div class="w-16 h-16 mx-auto mb-4 rounded-2xl gradient-bg flex items-center justify-center shadow-lg shadow-purple-500/30">
+                            <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                            </svg>
+                        </div>
+                        <h2 class="text-2xl font-bold text-white">欢迎回来</h2>
+                        <p class="text-slate-400 mt-2">登录或注册以继续使用 MyGoChat</p>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-slate-400 text-sm mb-2">用户名</label>
+                            <input v-model="auth.username" type="text" placeholder="输入用户名"
+                                   class="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none input-focus">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 text-sm mb-2">密码</label>
+                            <input v-model="auth.password" type="password" placeholder="输入密码"
+                                   class="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none input-focus">
+                        </div>
+                        <div class="flex gap-3 pt-2">
+                            <button @click="login" :disabled="auth.loading"
+                                    class="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-medium hover:opacity-90 transition-opacity disabled:opacity-50">
+                                {{ auth.loading ? '登录中...' : '登录' }}
+                            </button>
+                            <button @click="register" :disabled="auth.loading"
+                                    class="flex-1 py-3 bg-slate-700 text-white rounded-xl font-medium hover:bg-slate-600 transition-colors disabled:opacity-50">
+                                注册
+                            </button>
+                        </div>
+                    </div>
+
+                    <div v-if="!ws.connected" class="mt-6 p-4 bg-amber-900/30 border border-amber-700/50 rounded-xl">
+                        <div class="flex items-center gap-2 text-amber-400 text-sm">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                            </svg>
+                            <span>后端服务未连接，请确保服务已启动</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+        <!-- 新建会话模态框 -->
+        <transition name="fade">
+            <div v-if="showNewChatModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+                <div class="bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-6 border border-slate-700">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-xl font-bold text-white">新建私聊会话</h3>
+                        <button @click="showNewChatModal = false" class="text-slate-400 hover:text-white">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-slate-400 text-sm mb-2">目标用户 UUID</label>
+                            <input v-model="newChatForm.targetUserUUID" type="text" placeholder="输入用户 UUID"
+                                   class="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none input-focus">
+                        </div>
+                        <button @click="createPrivateConversation" :disabled="!newChatForm.targetUserUUID.trim()"
+                                class="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-medium hover:opacity-90 transition-opacity disabled:opacity-50">
+                            创建会话
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+        <!-- 创建群组模态框 -->
+        <transition name="fade">
+            <div v-if="showCreateGroupModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+                <div class="bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-6 border border-slate-700">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-xl font-bold text-white">创建群组</h3>
+                        <button @click="showCreateGroupModal = false" class="text-slate-400 hover:text-white">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-slate-400 text-sm mb-2">群组名称</label>
+                            <input v-model="createGroupForm.name" type="text" placeholder="输入群组名称 (3-20字符)"
+                                   class="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none input-focus">
+                        </div>
+                        <button @click="createGroup" :disabled="!createGroupForm.name.trim() || createGroupForm.name.length < 3"
+                                class="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl font-medium hover:opacity-90 transition-opacity disabled:opacity-50">
+                            创建群组
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+        <!-- 添加好友模态框 -->
+        <transition name="fade">
+            <div v-if="showAddFriendModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+                <div class="bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-6 border border-slate-700">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-xl font-bold text-white">添加好友</h3>
+                        <button @click="showAddFriendModal = false" class="text-slate-400 hover:text-white">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-slate-400 text-sm mb-2">好友用户名</label>
+                            <input v-model="addFriendForm.friendUsername" type="text" placeholder="输入好友用户名"
+                                   class="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none input-focus">
+                        </div>
+                        <button @click="addFriend" :disabled="!addFriendForm.friendUsername.trim()"
+                                class="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-medium hover:opacity-90 transition-opacity disabled:opacity-50">
+                            添加好友
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+        <!-- 个人资料模态框 -->
+        <transition name="fade">
+            <div v-if="showProfileModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+                <div class="bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-6 border border-slate-700">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-xl font-bold text-white">个人资料</h3>
+                        <button @click="showProfileModal = false" class="text-slate-400 hover:text-white">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="flex justify-center mb-4">
+                            <div class="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-3xl font-bold shadow-lg">
+                                {{ auth.username?.charAt(0)?.toUpperCase() || 'U' }}
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 text-sm mb-2">用户名</label>
+                            <input :value="auth.username" disabled
+                                   class="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-slate-400">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 text-sm mb-2">UUID</label>
+                            <input :value="currentUserUUID" disabled
+                                   class="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-slate-400 text-xs font-mono">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 text-sm mb-2">昵称</label>
+                            <input v-model="profileForm.nickname" type="text" placeholder="设置昵称"
+                                   class="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none input-focus">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 text-sm mb-2">邮箱</label>
+                            <input v-model="profileForm.email" type="email" placeholder="设置邮箱"
+                                   class="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none input-focus">
+                        </div>
+                        <button @click="updateProfile"
+                                class="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-medium hover:opacity-90 transition-opacity">
+                            保存修改
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+    </div>
+
+    <script>
+    const { createApp, ref, reactive, computed, watch, onMounted, nextTick } = Vue;
+
+    createApp({
+        setup() {
+            // ==================== State ====================
+            const auth = reactive({
+                username: '',
+                password: '',
+                token: localStorage.getItem('token') || '',
+                loading: false
+            });
+
+            const ws = reactive({
+                socket: null,
+                connected: false
+            });
+
+            const conversations = ref([]);
+            const selectedConversation = ref(null);
+            const messages = ref([]);
+            const relations = ref([]);
+            const debugLogs = ref([]);
+            const toasts = ref([]);
+
+            const searchQuery = ref('');
+            const conversationFilter = ref('all');
+            const rightTab = ref('contacts');
+            const messageInput = ref('');
+            const showUserMenu = ref(false);
+            const showProfileModal = ref(false);
+            const showNewChatModal = ref(false);
+            const showCreateGroupModal = ref(false);
+            const showAddFriendModal = ref(false);
+            const showConversationInfo = ref(false);
+
+            const newChatForm = reactive({ targetUserUUID: '' });
+            const createGroupForm = reactive({ name: '' });
+            const addFriendForm = reactive({ friendUsername: '' });
+            const profileForm = reactive({ nickname: '', email: '' });
+
+            const messagesContainer = ref(null);
+            const userMenuRef = ref(null);
+
+            // ==================== Computed ====================
+            const currentUserUUID = computed(() => {
+                if (!auth.token) return '';
+                try {
+                    const payload = JSON.parse(atob(auth.token.split('.')[1]));
+                    return payload.useruuid || '';
+                } catch {
+                    return '';
+                }
+            });
+
+            const filteredConversations = computed(() => {
+                let result = conversations.value;
+                if (conversationFilter.value === 'private') {
+                    result = result.filter(c => c.Type === 1);
+                } else if (conversationFilter.value === 'group') {
+                    result = result.filter(c => c.Type === 2);
+                }
+                if (searchQuery.value) {
+                    const query = searchQuery.value.toLowerCase();
+                    result = result.filter(c =>
+                        (c.TargetName && c.TargetName.toLowerCase().includes(query)) ||
+                        (c.TargetUUID && c.TargetUUID.toLowerCase().includes(query))
+                    );
+                }
+                return result;
+            });
+
+            // ==================== Methods ====================
+            const showToast = (message, type = 'info') => {
+                const id = Date.now();
+                toasts.value.push({ id, message, type });
+                setTimeout(() => {
+                    toasts.value = toasts.value.filter(t => t.id !== id);
+                }, 3000);
+            };
+
+            const addDebugLog = (type, data, method = '', url = '') => {
+                const timestamp = new Date().toLocaleTimeString();
+                debugLogs.value.unshift({ type, data, method, url, timestamp });
+                if (debugLogs.value.length > 50) debugLogs.value.pop();
+            };
+
+            const apiRequest = async (method, path, data = null) => {
+                const url = `/api${path}`;
+                const headers = { 'Content-Type': 'application/json' };
+                if (auth.token) headers['Authorization'] = `Bearer ${auth.token}`;
+
+                try {
+                    const response = await axios({ method, url, data, headers });
+                    addDebugLog('http', response.data, method.toUpperCase(), path);
+                    return response.data;
+                } catch (error) {
+                    const errData = error.response?.data || { msg: error.message };
+                    addDebugLog('error', errData, method.toUpperCase(), path);
+                    throw error;
+                }
+            };
+
+            const login = async () => {
+                if (!auth.username || !auth.password) {
+                    showToast('请输入用户名和密码', 'error');
+                    return;
+                }
+                auth.loading = true;
+                try {
+                    const res = await apiRequest('post', '/user/login', {
+                        username: auth.username,
+                        password: auth.password
+                    });
+                    if (res.code === 0 && res.data?.token) {
+                        auth.token = res.data.token;
+                        localStorage.setItem('token', res.data.token);
+                        showToast('登录成功', 'success');
+                        await Promise.all([loadConversations(), loadRelations()]);
+                        connectWebSocket();
+                    } else {
+                        showToast(res.msg || '登录失败', 'error');
+                    }
+                } catch (e) {
+                    showToast('登录失败: ' + (e.response?.data?.msg || e.message), 'error');
+                } finally {
+                    auth.loading = false;
+                }
+            };
+
+            const register = async () => {
+                if (!auth.username || !auth.password) {
+                    showToast('请输入用户名和密码', 'error');
+                    return;
+                }
+                auth.loading = true;
+                try {
+                    const res = await apiRequest('post', '/user/register', {
+                        username: auth.username,
+                        password: auth.password
+                    });
+                    if (res.code === 0 && res.data?.token) {
+                        auth.token = res.data.token;
+                        localStorage.setItem('token', res.data.token);
+                        showToast('注册成功', 'success');
+                        connectWebSocket();
+                    } else {
+                        showToast(res.msg || '注册失败', 'error');
+                    }
+                } catch (e) {
+                    showToast('注册失败: ' + (e.response?.data?.msg || e.message), 'error');
+                } finally {
+                    auth.loading = false;
+                }
+            };
+
+            const logout = () => {
+                auth.token = '';
+                localStorage.removeItem('token');
+                conversations.value = [];
+                selectedConversation.value = null;
+                messages.value = [];
+                relations.value = [];
+                showUserMenu.value = false;
+                disconnectWebSocket();
+                showToast('已退出登录', 'info');
+            };
+
+            const loadConversations = async () => {
+                try {
+                    const res = await apiRequest('get', '/message/conversations');
+                    if (res.code === 0) {
+                        conversations.value = res.data?.conversations || [];
+                    }
+                } catch (e) {
+                    console.error('Failed to load conversations:', e);
+                }
+            };
+
+            const loadRelations = async () => {
+                if (!auth.username) return;
+                try {
+                    const res = await apiRequest('get', `/relations/list?username=${auth.username}`);
+                    if (res.data?.relations) {
+                        relations.value = res.data.relations;
+                    }
+                } catch (e) {
+                    console.error('Failed to load relations:', e);
+                }
+            };
+
+            const selectConversation = async (conv) => {
+                selectedConversation.value = conv;
+                await loadHistory(conv.ID);
+            };
+
+            const loadHistory = async (conversationId) => {
+                try {
+                    const res = await apiRequest('get', `/message/history/${conversationId}?limit=50&offset=0`);
+                    if (res.code === 0) {
+                        messages.value = res.data?.messages || [];
+                        await nextTick();
+                        scrollToBottom();
+                    }
+                } catch (e) {
+                    console.error('Failed to load history:', e);
+                }
+            };
+
+            const scrollToBottom = () => {
+                if (messagesContainer.value) {
+                    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
+                }
+            };
+
+            const sendMessage = () => {
+                if (!ws.connected) {
+                    showToast('请先连接 WebSocket', 'error');
+                    return;
+                }
+                if (!messageInput.value.trim()) {
+                    showToast('请输入消息内容', 'error');
+                    return;
+                }
+                if (!selectedConversation.value) {
+                    showToast('请先选择一个会话', 'error');
+                    return;
+                }
+
+                const conv = selectedConversation.value;
+                const msg = {
+                    conversationID: conv.ID,
+                    recipientUUID: conv.TargetUUID,
+                    messageType: conv.Type || 1,
+                    contentType: 1,
+                    body: { content: messageInput.value },
+                    sendAt: Math.floor(Date.now() / 1000)
+                };
+
+                addDebugLog('ws-send', msg);
+                ws.socket.send(JSON.stringify(msg));
+                messageInput.value = '';
+                showToast('消息已发送', 'success');
+                setTimeout(() => loadHistory(conv.ID), 300);
+            };
+
+            const connectWebSocket = () => {
+                if (!auth.token) {
+                    showToast('请先登录', 'error');
+                    return;
+                }
+                if (ws.connected) return;
+
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const url = `${protocol}//${window.location.host}/ws?token=${auth.token}`;
+                addDebugLog('ws', `Connecting to ${url}`);
+
+                try {
+                    ws.socket = new WebSocket(url);
+
+                    ws.socket.onopen = () => {
+                        ws.connected = true;
+                        showToast('WebSocket 已连接', 'success');
+                        addDebugLog('ws', 'Connection established');
+                    };
+
+                    ws.socket.onmessage = async (event) => {
+                        try {
+                            let data;
+                            if (event.data instanceof Blob) {
+                                const text = await event.data.text();
+                                try {
+                                    data = JSON.parse(text);
+                                } catch {
+                                    addDebugLog('ws', `Text: ${text}`);
+                                    return;
+                                }
+                            } else {
+                                data = JSON.parse(event.data);
+                            }
+                            addDebugLog('ws', data);
+
+                            if (data && selectedConversation.value) {
+                                const convID = data.conversationID || data.ConversationID;
+                                if (convID === selectedConversation.value.ID) {
+                                    messages.value.push(data);
+                                    nextTick(scrollToBottom);
+                                    showToast('收到新消息', 'info');
+                                }
+                            }
+                        } catch (err) {
+                            addDebugLog('error', `Failed to process WS message: ${err.message}`);
+                        }
+                    };
+
+                    ws.socket.onerror = () => {
+                        addDebugLog('error', 'WebSocket error');
+                        showToast('WebSocket 错误', 'error');
+                    };
+
+                    ws.socket.onclose = (event) => {
+                        ws.connected = false;
+                        addDebugLog('ws', `Connection closed: ${event.code}`);
+                    };
+                } catch (e) {
+                    showToast('WebSocket 连接失败: ' + e.message, 'error');
+                }
+            };
+
+            const disconnectWebSocket = () => {
+                if (ws.socket) {
+                    ws.socket.close();
+                    ws.socket = null;
+                    ws.connected = false;
+                }
+            };
+
+            const createPrivateConversation = async () => {
+                if (!newChatForm.targetUserUUID.trim()) {
+                    showToast('请输入目标用户 UUID', 'error');
+                    return;
+                }
+                try {
+                    const res = await apiRequest('post', '/message/conversation/private', {
+                        target_user_uuid: newChatForm.targetUserUUID
+                    });
+                    if (res.code === 0) {
+                        showToast('会话创建成功', 'success');
+                        showNewChatModal.value = false;
+                        newChatForm.targetUserUUID = '';
+                        await loadConversations();
+                    } else {
+                        showToast(res.msg || '创建失败', 'error');
+                    }
+                } catch (e) {
+                    showToast('创建失败: ' + (e.response?.data?.msg || e.message), 'error');
+                }
+            };
+
+            const createGroup = async () => {
+                if (!createGroupForm.name.trim() || createGroupForm.name.length < 3) {
+                    showToast('群组名称需要 3-20 个字符', 'error');
+                    return;
+                }
+                try {
+                    const res = await apiRequest('post', '/group/create', {
+                        groupname: createGroupForm.name
+                    });
+                    if (res.code === 0) {
+                        showToast('群组创建成功', 'success');
+                        showCreateGroupModal.value = false;
+                        createGroupForm.name = '';
+                        await loadConversations();
+                    } else {
+                        showToast(res.msg || '创建失败', 'error');
+                    }
+                } catch (e) {
+                    showToast('创建失败: ' + (e.response?.data?.msg || e.message), 'error');
+                }
+            };
+
+            const addFriend = async () => {
+                if (!addFriendForm.friendUsername.trim()) {
+                    showToast('请输入好友用户名', 'error');
+                    return;
+                }
+                try {
+                    const res = await apiRequest('post', '/relations/add-friend', {
+                        username1: auth.username,
+                        username2: addFriendForm.friendUsername
+                    });
+                    showToast('好友添加成功', 'success');
+                    showAddFriendModal.value = false;
+                    addFriendForm.friendUsername = '';
+                    await loadRelations();
+                } catch (e) {
+                    showToast('添加失败: ' + (e.response?.data?.error || e.message), 'error');
+                }
+            };
+
+            const updateProfile = async () => {
+                try {
+                    const res = await apiRequest('put', '/user/info/update', {
+                        nickname: profileForm.nickname,
+                        email: profileForm.email
+                    });
+                    if (res.code === 0) {
+                        showToast('资料更新成功', 'success');
+                        showProfileModal.value = false;
+                    } else {
+                        showToast(res.msg || '更新失败', 'error');
+                    }
+                } catch (e) {
+                    showToast('更新失败: ' + (e.response?.data?.msg || e.message), 'error');
+                }
+            };
+
+            const getConversationName = (conv) => {
+                return conv.TargetName || conv.TargetUUID?.substring(0, 8) || '未知会话';
+            };
+
+            const getSenderName = (msg) => {
+                return msg.SenderName || msg.senderName || (msg.SenderUUID || msg.senderUUID)?.substring(0, 8) || '未知';
+            };
+
+            const getMessageBody = (msg) => {
+                const body = msg.Body || msg.body;
+                if (!body) return '[无内容]';
+                if (typeof body === 'string') return body;
+                if (body.content) return body.content;
+                if (body.url) return `[文件: ${body.fileName || body.url}]`;
+                return JSON.stringify(body);
+            };
+
+            const isMyMessage = (msg) => {
+                return (msg.SenderUUID || msg.senderUUID) === currentUserUUID.value;
+            };
+
+            const formatTime = (timestamp) => {
+                if (!timestamp) return '';
+                const date = new Date(timestamp * 1000);
+                return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+            };
+
+            const formatTimeShort = (timestamp) => {
+                if (!timestamp) return '';
+                const date = new Date(timestamp * 1000);
+                const now = new Date();
+                if (date.toDateString() === now.toDateString()) {
+                    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+                }
+                return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+            };
+
+            // 点击外部关闭用户菜单
+            const handleClickOutside = (e) => {
+                if (userMenuRef.value && !userMenuRef.value.contains(e.target)) {
+                    showUserMenu.value = false;
+                }
+            };
+
+            // ==================== Lifecycle ====================
+            onMounted(() => {
+                document.addEventListener('click', handleClickOutside);
+                if (auth.token) {
+                    loadConversations();
+                    loadRelations();
+                    connectWebSocket();
+                }
+            });
+
+            return {
+                auth, ws, conversations, selectedConversation, messages, relations,
+                debugLogs, toasts, searchQuery, conversationFilter, rightTab,
+                messageInput, showUserMenu, showProfileModal, showNewChatModal,
+                showCreateGroupModal, showAddFriendModal, showConversationInfo,
+                newChatForm, createGroupForm, addFriendForm, profileForm,
+                messagesContainer, userMenuRef, currentUserUUID, filteredConversations,
+                login, register, logout, loadConversations, loadRelations,
+                selectConversation, sendMessage, connectWebSocket, disconnectWebSocket,
+                createPrivateConversation, createGroup, addFriend, updateProfile,
+                getConversationName, getSenderName, getMessageBody, isMyMessage,
+                formatTime, formatTimeShort, showToast
+            };
+        }
+    }).mount('#app');
+    </script>
+</body>
+</html>

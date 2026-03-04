@@ -64,12 +64,15 @@ type (
 var config YamlConfig
 
 func init() {
-	root, err := getProjectRoot()
-	if err != nil {
-		panic(fmt.Errorf("Failed to find project root: %w", err))
+	// 优先使用环境变量指定的配置文件路径
+	configPath := os.Getenv("CONFIG_PATH")
+	if configPath == "" {
+		root, err := getProjectRoot()
+		if err != nil {
+			panic(fmt.Errorf("Failed to find project root: %w", err))
+		}
+		configPath = filepath.Join(root, "configs", "config.dev.yaml")
 	}
-
-	configPath := filepath.Join(root, "configs", "config.dev.yaml")
 
 	viper.SetConfigFile(configPath)
 	viper.AutomaticEnv()
