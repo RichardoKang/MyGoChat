@@ -39,33 +39,19 @@
 ![会话流程图](Markdown/会话流程图.png)
 ## 项目结构
 
-```
+```text
 MyGoChat/
-├── api/v1/                  # Protobuf 消息定义
-├── cmd/
-│   ├── gateway/             # Gateway 服务入口
-│   └── logic/               # Logic 服务入口
-├── configs/                 # 配置文件
-├── deployments/             # Docker 部署配置
-├── internal/
-│   ├── chat/                # 聊天模块 (消息、会话)
-│   ├── gateway/             # Gateway 模块 (WebSocket)
-│   ├── group/               # 群组模块
-│   ├── middleware/          # 中间件 (CORS, JWT)
-│   ├── platform/            # 平台层 (数据库连接)
-│   ├── relation/            # 关系模块 (好友、群成员)
-│   ├── server/              # HTTP 路由
-│   ├── user/                # 用户模块
-│   └── util/                # 工具函数
-├── pkg/
-│   ├── common/              # 请求/响应结构体
-│   ├── config/              # 配置加载
-│   ├── HTML/                # 前端测试页面
-│   ├── kafka/               # Kafka 生产者/消费者
-│   ├── log/                 # 日志
-│   ├── redis/               # Redis 客户端
-│   ├── test/                # 测试用例
-│   └── token/               # JWT 工具
+├── chat/                    # Logic 服务
+│   ├── cmd/                 # 服务入口
+│   ├── configs/             # 配置文件
+│   └── internal/            # 聊天/关系/用户等核心模块
+├── gateway/                 # Gateway 服务
+│   ├── cmd/                 # 服务入口
+│   └── internal/            # WebSocket 与消息分发
+├── frontend/                # 前端静态资源与 Nginx 配置
+├── pkg/                     # 公共组件（config/log/kafka/redis/token 等）
+├── redis/                   # Redis 配置
+├── docker-compose.yaml      # 容器编排（含 PostgreSQL/Mongo/Redis/Kafka）
 └── Markdown/                # 项目文档
 ```
 
@@ -87,24 +73,21 @@ MyGoChat/
 git clone https://github.com/RichardoKang/MyGoChat.git
 cd MyGoChat
 
-# 安装依赖
-go mod tidy
+# 使用 Docker Compose 启动全部服务（推荐）
+docker compose up -d --build
 
-# 启动依赖服务 (可选，使用 Docker)
-docker-compose -f deployments/docker-compose.yaml up -d
-
-# 启动 Logic 服务 (端口 8080)
-go run ./cmd/logic/main.go
-
-# 启动 Gateway 服务 (端口 8081)
-go run ./cmd/gateway/main.go
+# 查看服务状态
+docker compose ps
 ```
 
-或使用启动脚本：
-
-```bash
-./start.sh
-```
+服务端口：
+- frontend: `80`
+- chat (logic): `8080`
+- gateway: `8081`
+- postgresql: `5432`
+- mongo: `27017`
+- redis: `6379`
+- kafka: `9092`
 
 ## API 接口
 
@@ -174,41 +157,37 @@ open pkg/HTML/index.html
 
 ## 配置说明
 
-配置文件位于 `configs/` 目录：
+主要配置文件位于 `chat/configs/config.dev.yaml`。
+
+使用 Docker Compose 时，建议按容器服务名配置依赖地址：
 
 ```yaml
 # config.dev.yaml
-postgresql:
-  host: 127.0.0.1
+PostgresSQL:
+  user: "postgres"
+  password: "password"
+  host: "postgresql"
   port: 5432
-  user: postgres
-  password: your_password
-  dbname: mygochat
+  dbname: "chatdb"
+  sslmode: "disable"
+  timezone: "Asia/Shanghai"
 
-mongo:
-  uri: mongodb://localhost:27017
-  database: mygochat
+Kafka:
+  brokers:
+    - "kafka:9093"
+  topics:
+    ingest: "im_message_ingest"
+    sync_request: "im_sync_request"
+    delivery: "im_message_delivery_"
 
-redis:
-  addr: 127.0.0.1:6379
-  password: ""
+Redis:
+  addr: "redis:6379"
+  password: "mygochat"
   db: 0
 
-kafka:
-  brokers:
-    - localhost:9092
-  topics:
-    ingest: im_message_ingest
-    delivery: im_message_delivery_
-    sync_request: im_sync_request
-
-jwt:
-  secret: your_jwt_secret
-  expire: 24h
-
-log:
-  path: ./logs
-  level: debug
+Mongo:
+  uri: "mongodb://admin:admin@mongo:27017"
+  database: "mygochat"
 ```
 
 ## 注意事项

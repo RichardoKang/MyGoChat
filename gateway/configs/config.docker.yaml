@@ -1,0 +1,23 @@
+AppName: "MyGoChat-Gateway"
+
+SeverID: "gateway-01"
+
+Log:
+  level: "info"
+  path: "./logs"
+
+JwtSecret:
+  SecretKey: "your_secret_key_docker"
+
+Kafka:
+  brokers:
+    - "kafka:9093"
+  topics:
+    ingest: "im_message_ingest"
+    sync_request: "im_sync_request"
+    delivery: "im_message_delivery_"
+
+Redis:
+  addr: "redis:6379"
+  password: "mygochat"
+  db: 0

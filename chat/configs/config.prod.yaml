@@ -1,0 +1,34 @@
+AppName: "MyGoChat"
+
+PostgresSQL:
+  user: "your_username"
+  password: "your_password"
+  host: "127.0.0.1"
+  port: 5432
+  dbname: "your_database"
+  sslmode: "disable/enable"
+  timezone: "Asia/Shanghai"
+
+Log:
+  level: "info"
+  path: "./pkg/log/log"
+
+JwtSecret:
+  SecretKey: "your_secret_key"
+
+Kafka:
+  brokers:
+    - "127.0.0.1:9092" # 这里替换成你的 Kafka Broker 地址
+  topics:
+    private: "msg_private"
+    group: "msg_group"
+    notification: "msg_notification"
+
+redis:
+  addr: "127.0.0.1:6379" # 替换为你的 Redis 地址
+  password: "your_pass_word" # 如果有密码请填写
+  db: 0                  # 使用的数据库编号
+
+Mongo:
+  uri: "mongodb://admin:admin@localhost:27017" # 替换为你的 MongoDB 连接字符串
+  database: "mygochat"
