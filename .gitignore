@@ -4,4 +4,4 @@ configs/config.dev.yaml
 .DS_Store
 deployments/.DS_Store
 internal/.DS_Store
-.idea/
+.idea/chat/configs/config.dev.yaml
