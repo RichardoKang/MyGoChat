@@ -1,2 +1,7 @@
 ./.idea
 configs/config.dev.yaml
+# Ignore Mac system files
+.DS_Store
+deployments/.DS_Store
+internal/.DS_Store
+.idea/
